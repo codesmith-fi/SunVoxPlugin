@@ -1,0 +1,23 @@
+apply plugin: 'com.android.application'
+
+android {
+    compileSdk = 36
+    namespace 'com.yourcompany.sunvoxplayer'
+
+    defaultConfig {
+        applicationId "com.yourcompany.sunvoxplayer"
+        minSdkVersion 16
+        targetSdkVersion 36
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.txt'
+        }
+    }
+}
+
+dependencies {
+    implementation project(':SunVoxLib')
+}
