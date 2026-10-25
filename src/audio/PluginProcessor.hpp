@@ -45,6 +45,8 @@ public:
 	juce::MidiKeyboardState& getKeyboardState() noexcept { return keyboardState_; }
 	const juce::MidiKeyboardState& getKeyboardState() const noexcept { return keyboardState_; }
 
+	std::function<void()> onStateChanged;
+
 private:
 	SunVoxEngine sunVoxEngine_;
 	juce::MidiKeyboardState keyboardState_;

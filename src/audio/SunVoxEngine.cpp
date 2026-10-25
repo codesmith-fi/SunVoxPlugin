@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <iostream>
 #include <filesystem>
+#include <cstring>
 
 #if defined(__unix__) || defined(__linux__) || defined(__APPLE__)
 #include <dlfcn.h>
@@ -141,10 +142,89 @@ bool SunVoxEngine::loadProject(const std::string& filePath)
 
 	if (res == 0)
 	{
-		defaultSynthModule_ = -1; // Project has its own routing
+		updateDefaultModuleAfterLoad();
 		return true;
 	}
 	return false;
+}
+
+bool SunVoxEngine::saveProject(const std::string& filePath)
+{
+	if (!isInitialized_)
+		return false;
+
+	sv_lock_slot(slot_);
+	int res = sv_save(slot_, filePath.c_str());
+	sv_unlock_slot(slot_);
+	return res == 0;
+}
+
+int SunVoxEngine::loadModule(const std::string& filePath, int x, int y)
+{
+	if (!isInitialized_)
+		return -1;
+
+	sv_lock_slot(slot_);
+	int modId = sv_load_module(slot_, filePath.c_str(), x, y, 0);
+	sv_unlock_slot(slot_);
+	return modId;
+}
+
+std::vector<uint8_t> SunVoxEngine::saveToMemory()
+{
+	std::vector<uint8_t> buffer;
+	if (!isInitialized_)
+		return buffer;
+
+	sv_lock_slot(slot_);
+	size_t size = 0;
+	void* data = sv_save_to_memory(slot_, &size);
+	sv_unlock_slot(slot_);
+
+	if (data != nullptr && size > 0)
+	{
+		buffer.resize(size);
+		std::memcpy(buffer.data(), data, size);
+		free(data);
+	}
+	return buffer;
+}
+
+bool SunVoxEngine::loadFromMemory(const void* data, size_t size)
+{
+	if (!isInitialized_ || data == nullptr || size == 0)
+		return false;
+
+	sv_lock_slot(slot_);
+	int res = sv_load_from_memory(slot_, const_cast<void*>(data), static_cast<uint32_t>(size));
+	sv_unlock_slot(slot_);
+
+	if (res == 0)
+	{
+		updateDefaultModuleAfterLoad();
+		return true;
+	}
+	return false;
+}
+
+void SunVoxEngine::updateDefaultModuleAfterLoad()
+{
+	defaultSynthModule_ = -1;
+	int numModules = sv_get_number_of_modules(slot_);
+	for (int i = 1; i < numModules; ++i)
+	{
+		uint32_t flags = sv_get_module_flags(slot_, i);
+		if ((flags & SV_MODULE_FLAG_EXISTS) != 0)
+		{
+			const char* type = sv_get_module_type(slot_, i);
+			if (type != nullptr && std::string(type) != "Output")
+			{
+				defaultSynthModule_ = i;
+				break;
+			}
+		}
+	}
+	activeMidiModule_ = defaultSynthModule_;
 }
 
 void SunVoxEngine::close()
@@ -191,26 +271,24 @@ void SunVoxEngine::renderAudio(float* leftOutput, float* rightOutput, int numFra
 
 void SunVoxEngine::sendMidiNote(int note, int velocity, int track)
 {
-	if (!isInitialized_ || defaultSynthModule_ < 0)
+	int targetMod = (activeMidiModule_ >= 0) ? activeMidiModule_ : defaultSynthModule_;
+	if (!isInitialized_ || targetMod < 0)
 		return;
 
-	// SunVox-nuotit ovat 1..127 (note + 1).
-	// Huom: SunVox C API:ssa sv_send_event:in module-parametri on 1-pohjainen:
-	// sunvox.h rivi 289: "module: 0 (empty) or module number + 1 (1..65535);"
-	// Siksi moduulille 1 (Generator) välitetään (defaultSynthModule_ + 1) eli 2.
 	int svNote = std::clamp(note + 1, 1, 127);
 	int svVel = (velocity > 0) ? std::clamp(velocity, 1, 129) : 129;
-	int targetModule = defaultSynthModule_ + 1;
+	int targetModule = targetMod + 1;
 
 	sv_send_event(slot_, track, svNote, svVel, targetModule, 0, 0);
 }
 
 void SunVoxEngine::sendMidiNoteOff(int track)
 {
-	if (!isInitialized_ || defaultSynthModule_ < 0)
+	int targetMod = (activeMidiModule_ >= 0) ? activeMidiModule_ : defaultSynthModule_;
+	if (!isInitialized_ || targetMod < 0)
 		return;
 
-	int targetModule = defaultSynthModule_ + 1;
+	int targetModule = targetMod + 1;
 	sv_send_event(slot_, track, NOTECMD_NOTE_OFF, 0, targetModule, 0, 0);
 }
 
@@ -236,10 +314,11 @@ void SunVoxEngine::sendAllNotesOff()
 
 void SunVoxEngine::sendPitchBend(int track, int pitchVal)
 {
-	if (!isInitialized_ || defaultSynthModule_ < 0)
+	int targetMod = (activeMidiModule_ >= 0) ? activeMidiModule_ : defaultSynthModule_;
+	if (!isInitialized_ || targetMod < 0)
 		return;
 
-	int targetModule = defaultSynthModule_ + 1;
+	int targetModule = targetMod + 1;
 	sv_send_event(slot_, track, NOTECMD_SET_PITCH, 0, targetModule, 0, pitchVal);
 }
 

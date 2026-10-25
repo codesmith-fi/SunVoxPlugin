@@ -103,14 +103,47 @@ double SunVoxAudioProcessor::getTailLengthSeconds() const
 	return 0.0;
 }
 
+static constexpr uint32_t kPluginStateMagic = 0x5356504c; // "SVPL" in ASCII
+static constexpr uint32_t kPluginStateVersion = 1;
+
 void SunVoxAudioProcessor::getStateInformation(juce::MemoryBlock& destData)
 {
-	juce::ignoreUnused(destData);
+	auto sunvoxBytes = sunVoxEngine_.saveToMemory();
+	if (sunvoxBytes.empty())
+		return;
+
+	destData.reset();
+	juce::MemoryOutputStream stream(destData, false);
+	stream.writeInt(static_cast<int>(kPluginStateMagic));
+	stream.writeInt(static_cast<int>(kPluginStateVersion));
+	stream.writeInt(static_cast<int>(sunvoxBytes.size()));
+	stream.write(sunvoxBytes.data(), sunvoxBytes.size());
 }
 
 void SunVoxAudioProcessor::setStateInformation(const void* data, int sizeInBytes)
 {
-	juce::ignoreUnused(data, sizeInBytes);
+	if (data == nullptr || sizeInBytes < 12)
+		return;
+
+	juce::MemoryInputStream stream(data, static_cast<size_t>(sizeInBytes), false);
+	uint32_t magic = static_cast<uint32_t>(stream.readInt());
+	uint32_t version = static_cast<uint32_t>(stream.readInt());
+	int dataSize = stream.readInt();
+
+	if (magic != kPluginStateMagic || version != kPluginStateVersion || dataSize <= 0)
+		return;
+
+	if (stream.getNumBytesRemaining() < dataSize)
+		return;
+
+	std::vector<uint8_t> buffer(static_cast<size_t>(dataSize));
+	if (stream.read(buffer.data(), static_cast<size_t>(dataSize)) == dataSize)
+	{
+		sunVoxEngine_.loadFromMemory(buffer.data(), buffer.size());
+
+		if (onStateChanged)
+			onStateChanged();
+	}
 }
 
 } // namespace sunvox

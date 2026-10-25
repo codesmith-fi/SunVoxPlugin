@@ -55,6 +55,11 @@ public:
 	int getDefaultModule() const noexcept { return defaultSynthModule_; }
 
 	bool loadProject(const std::string& filePath);
+	bool saveProject(const std::string& filePath);
+	int loadModule(const std::string& filePath, int x = 0, int y = 0);
+	std::vector<uint8_t> saveToMemory();
+	bool loadFromMemory(const void* data, size_t size);
+
 	bool createDefaultSynth();
 	std::vector<ModuleInfo> getActiveModules();
 
@@ -71,13 +76,19 @@ public:
 	std::vector<ControllerInfo> getModuleControllers(int modId);
 	void setModuleCtlValue(int modId, int ctlId, int value);
 
+	void setActiveMidiModule(int modId) noexcept { activeMidiModule_ = modId; }
+	int getActiveMidiModule() const noexcept { return activeMidiModule_; }
+
 private:
 	bool isLibraryLoaded_{false};
 	bool isInitialized_{false};
 	int sampleRate_{44100};
 	int slot_{0};
 	int defaultSynthModule_{-1};
+	int activeMidiModule_{-1};
 	std::vector<float> interleavedBuffer_;
+
+	void updateDefaultModuleAfterLoad();
 };
 
 } // namespace sunvox
