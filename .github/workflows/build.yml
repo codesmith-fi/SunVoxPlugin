@@ -25,7 +25,7 @@ jobs:
             name: Linux
             build_type: Release
             platform: Linux-x86_64
-          - os: windows-latest
+          - os: windows-2022
             name: Windows
             build_type: Release
             platform: Windows-x64
@@ -70,7 +70,7 @@ jobs:
 
       - name: Configure CMake (Windows)
         if: runner.os == 'Windows'
-        run: cmake -B build -G "Visual Studio 17 2022" -A x64 -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+        run: cmake -B build -A x64 -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
 
       - name: Build All Targets
         run: cmake --build build --config ${{ matrix.build_type }} --parallel
