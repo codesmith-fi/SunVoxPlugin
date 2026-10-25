@@ -57,7 +57,8 @@ public:
 
 private:
 	ModuleInfo info_;
-	juce::ComponentDragger dragger_;
+	juce::Point<int> dragStartComponentPos_;
+	juce::Point<float> dragStartMousePos_;
 	bool isSelected_{false};
 	bool isInputPinHighlighted_{false};
 	bool isDraggingCable_{false};

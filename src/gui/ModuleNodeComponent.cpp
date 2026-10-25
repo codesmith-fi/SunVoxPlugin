@@ -160,7 +160,11 @@ void ModuleNodeComponent::mouseDown(const juce::MouseEvent& e)
 	}
 
 	isDraggingCable_ = false;
-	dragger_.startDraggingComponent(this, e);
+	if (auto* parent = getParentComponent())
+	{
+		dragStartComponentPos_ = getPosition();
+		dragStartMousePos_ = e.getEventRelativeTo(parent).position;
+	}
 	toFront(true);
 }
 
@@ -177,7 +181,12 @@ void ModuleNodeComponent::mouseDrag(const juce::MouseEvent& e)
 		return;
 	}
 
-	dragger_.dragComponent(this, e, nullptr);
+	if (auto* parent = getParentComponent())
+	{
+		auto curMouse = e.getEventRelativeTo(parent).position;
+		auto delta = (curMouse - dragStartMousePos_).roundToInt();
+		setTopLeftPosition(dragStartComponentPos_ + delta);
+	}
 
 	if (onMoved)
 		onMoved();

@@ -4,9 +4,52 @@
 namespace sunvox
 {
 
+GraphCanvas::CanvasContentHolder::CanvasContentHolder(GraphCanvas& owner)
+	: owner_(owner)
+{
+	setInterceptsMouseClicks(false, true);
+}
+
+void GraphCanvas::CanvasContentHolder::paintOverChildren(juce::Graphics& g)
+{
+	owner_.paintCanvasContent(g);
+}
+
 GraphCanvas::GraphCanvas(SunVoxEngine* engine)
 	: engine_(engine)
 {
+	contentHolder_ = std::make_unique<CanvasContentHolder>(*this);
+	contentHolder_->setBounds(0, 0, 10000, 10000);
+	addAndMakeVisible(contentHolder_.get());
+	updateTransform();
+}
+
+GraphCanvas::~GraphCanvas()
+{
+	contentHolder_.reset();
+}
+
+juce::Point<float> GraphCanvas::screenToWorld(juce::Point<float> screenPos) const noexcept
+{
+	return (screenPos - viewOffset_) / zoomFactor_;
+}
+
+juce::Point<float> GraphCanvas::worldToScreen(juce::Point<float> worldPos) const noexcept
+{
+	return (worldPos * zoomFactor_) + viewOffset_;
+}
+
+juce::AffineTransform GraphCanvas::getCanvasTransform() const noexcept
+{
+	return juce::AffineTransform::scale(zoomFactor_).translated(viewOffset_.x, viewOffset_.y);
+}
+
+void GraphCanvas::updateTransform()
+{
+	if (contentHolder_ != nullptr)
+	{
+		contentHolder_->setTransform(getCanvasTransform());
+	}
 }
 
 void GraphCanvas::refreshFromEngine()
@@ -32,7 +75,8 @@ void GraphCanvas::updateFromEngine(const std::vector<ModuleInfo>& modules)
 
 	nodes_.clear();
 	nodeMap_.clear();
-	removeAllChildren();
+	if (contentHolder_ != nullptr)
+		contentHolder_->removeAllChildren();
 
 	// Default layout coordinates: Generator x=180, y=220; Output x=560, y=220
 	int autoXGenerator = 180;
@@ -100,7 +144,8 @@ void GraphCanvas::updateFromEngine(const std::vector<ModuleInfo>& modules)
 		}
 
 		node->setTopLeftPosition(pos.x, pos.y);
-		addAndMakeVisible(node.get());
+		if (contentHolder_ != nullptr)
+			contentHolder_->addAndMakeVisible(node.get());
 
 		nodeMap_[info.id] = node.get();
 		nodes_.push_back(std::move(node));
@@ -123,14 +168,37 @@ void GraphCanvas::selectModule(int modId)
 
 void GraphCanvas::mouseDown(const juce::MouseEvent& e)
 {
-	if (e.mods.isLeftButtonDown())
+	if (e.mods.isPopupMenu())
+		return;
+
+	isPanning_ = true;
+	panAnchorPos_ = e.position;
+	panMouseDownPos_ = e.position;
+}
+
+void GraphCanvas::mouseDrag(const juce::MouseEvent& e)
+{
+	if (isPanning_)
 	{
-		selectModule(-1);
+		auto delta = e.position - panAnchorPos_;
+		panAnchorPos_ = e.position;
+		viewOffset_ += delta;
+		updateTransform();
+		repaint();
 	}
 }
 
 void GraphCanvas::mouseUp(const juce::MouseEvent& e)
 {
+	if (isPanning_)
+	{
+		isPanning_ = false;
+		if (panMouseDownPos_.getDistanceFrom(e.position) < 4.0f && e.mods.isLeftButtonDown())
+		{
+			selectModule(-1);
+		}
+	}
+
 	if (e.mods.isPopupMenu())
 	{
 		auto hitCable = findCableAt(e.position.toFloat());
@@ -162,7 +230,29 @@ void GraphCanvas::mouseUp(const juce::MouseEvent& e)
 			return;
 		}
 
-		showContextMenu(e.getScreenPosition(), e.getPosition());
+		auto worldPos = screenToWorld(e.position.toFloat()).roundToInt();
+		showContextMenu(e.getScreenPosition(), worldPos);
+	}
+}
+
+void GraphCanvas::mouseWheelMove(const juce::MouseEvent& e, const juce::MouseWheelDetails& wheel)
+{
+	float delta = wheel.deltaY;
+	if (std::abs(delta) < 0.0001f)
+		return;
+
+	auto mousePos = e.position;
+	auto worldPos = screenToWorld(mousePos);
+
+	float zoomSpeed = 0.15f;
+	float newZoom = juce::jlimit(0.35f, 2.0f, zoomFactor_ + delta * zoomSpeed);
+
+	if (std::abs(newZoom - zoomFactor_) > 0.001f)
+	{
+		zoomFactor_ = newZoom;
+		viewOffset_ = mousePos - (worldPos * zoomFactor_);
+		updateTransform();
+		repaint();
 	}
 }
 
@@ -251,8 +341,11 @@ void GraphCanvas::handleCableDragEnded(juce::Point<float> releasePos)
 	repaint();
 }
 
-std::optional<std::pair<int, int>> GraphCanvas::findCableAt(juce::Point<float> pos) const
+std::optional<std::pair<int, int>> GraphCanvas::findCableAt(juce::Point<float> screenPos) const
 {
+	auto worldPos = screenToWorld(screenPos);
+	float strokeTolerance = 14.0f / zoomFactor_;
+
 	for (const auto& node : nodes_)
 	{
 		int srcId = node->getModuleId();
@@ -274,8 +367,8 @@ std::optional<std::pair<int, int>> GraphCanvas::findCableAt(juce::Point<float> p
 				cable.cubicTo(p1, p2, p3);
 
 				juce::Path stroked;
-				juce::PathStrokeType(14.0f).createStrokedPath(stroked, cable);
-				if (stroked.contains(pos))
+				juce::PathStrokeType(strokeTolerance).createStrokedPath(stroked, cable);
+				if (stroked.contains(worldPos))
 				{
 					return std::make_pair(srcId, dstId);
 				}
@@ -540,20 +633,53 @@ void GraphCanvas::paint(juce::Graphics& g)
 	g.setColour(juce::Colour(0xff2b323d));
 	g.drawRoundedRectangle(bounds.reduced(0.5f), cornerSize, 1.0f);
 
-	// Subtle grid
+	// Dynamic grid that scrolls and scales
+	g.saveState();
+	g.reduceClipRegion(bounds.toNearestInt());
+
 	g.setColour(juce::Colour(0xff1d222b));
-	const int gridSize = 24;
-	for (int x = static_cast<int>(bounds.getX()); x < static_cast<int>(bounds.getRight()); x += gridSize)
+	float baseGridSize = 24.0f;
+	float scaledGrid = baseGridSize * zoomFactor_;
+
+	// If grid becomes too dense when zoomed out, double spacing
+	while (scaledGrid < 12.0f)
+		scaledGrid *= 2.0f;
+
+	float startX = std::fmod(viewOffset_.x, scaledGrid);
+	if (startX < 0.0f) startX += scaledGrid;
+
+	float startY = std::fmod(viewOffset_.y, scaledGrid);
+	if (startY < 0.0f) startY += scaledGrid;
+
+	for (float x = bounds.getX() + startX; x < bounds.getRight(); x += scaledGrid)
 	{
-		g.drawVerticalLine(x, bounds.getY(), bounds.getBottom());
+		g.drawVerticalLine(juce::roundToInt(x), bounds.getY(), bounds.getBottom());
 	}
-	for (int y = static_cast<int>(bounds.getY()); y < static_cast<int>(bounds.getBottom()); y += gridSize)
+	for (float y = bounds.getY() + startY; y < bounds.getBottom(); y += scaledGrid)
 	{
-		g.drawHorizontalLine(y, bounds.getX(), bounds.getRight());
+		g.drawHorizontalLine(juce::roundToInt(y), bounds.getX(), bounds.getRight());
+	}
+
+	g.restoreState();
+
+	// Zoom badge in corner
+	if (std::abs(zoomFactor_ - 1.0f) > 0.01f)
+	{
+		g.setColour(juce::Colour(0x881e242f));
+		g.fillRoundedRectangle(bounds.getRight() - 56.0f, bounds.getBottom() - 28.0f, 48.0f, 20.0f, 4.0f);
+		g.setColour(juce::Colour(0xff00e5ff));
+		g.setFont(juce::FontOptions(11.0f));
+		juce::String zoomStr = juce::String(juce::roundToInt(zoomFactor_ * 100.0f)) + "%";
+		g.drawText(zoomStr, juce::Rectangle<float>(bounds.getRight() - 56.0f, bounds.getBottom() - 28.0f, 48.0f, 20.0f), juce::Justification::centred, false);
 	}
 }
 
 void GraphCanvas::paintOverChildren(juce::Graphics& g)
+{
+	juce::ignoreUnused(g);
+}
+
+void GraphCanvas::paintCanvasContent(juce::Graphics& g)
 {
 	// Draw patch cables on top of nodes between connection pins
 	for (const auto& node : nodes_)
@@ -610,6 +736,11 @@ void GraphCanvas::paintOverChildren(juce::Graphics& g)
 
 void GraphCanvas::resized()
 {
+	if (contentHolder_ != nullptr)
+	{
+		contentHolder_->setBounds(0, 0, 10000, 10000);
+		updateTransform();
+	}
 }
 
 } // namespace sunvox
