@@ -39,28 +39,20 @@ PresetBrowserComponent::PresetBrowserComponent(PresetManager& presetManager, Sun
 	presetListBox_.setColour(juce::ListBox::outlineColourId, juce::Colour(0xff2d3139));
 	addAndMakeVisible(presetListBox_);
 
+	setWantsKeyboardFocus(true);
+
 	// Prev / Next buttons
 	prevButton_.setColour(juce::TextButton::buttonColourId, juce::Colour(0xff2b323d));
 	prevButton_.setColour(juce::TextButton::textColourOffId, juce::Colour(0xffe5e9f0));
 	prevButton_.onClick = [this] {
-		if (presetManager_.prevPreset(engine_))
-		{
-			refreshBrowser();
-			if (onPresetLoaded)
-				onPresetLoaded();
-		}
+		selectPreviousPreset();
 	};
 	addAndMakeVisible(prevButton_);
 
 	nextButton_.setColour(juce::TextButton::buttonColourId, juce::Colour(0xff2b323d));
 	nextButton_.setColour(juce::TextButton::textColourOffId, juce::Colour(0xffe5e9f0));
 	nextButton_.onClick = [this] {
-		if (presetManager_.nextPreset(engine_))
-		{
-			refreshBrowser();
-			if (onPresetLoaded)
-				onPresetLoaded();
-		}
+		selectNextPreset();
 	};
 	addAndMakeVisible(nextButton_);
 
@@ -140,6 +132,117 @@ void PresetBrowserComponent::handlePresetSelected(int row)
 			presetListBox_.repaint();
 		}
 	}
+}
+
+bool PresetBrowserComponent::selectPreviousPreset()
+{
+	if (currentFilteredPresets_.empty())
+	{
+		bool ok = presetManager_.prevPreset(engine_);
+		if (ok)
+		{
+			refreshBrowser();
+			if (onPresetLoaded)
+				onPresetLoaded();
+		}
+		return ok;
+	}
+
+	auto cur = presetManager_.getCurrentPreset();
+	int curIdx = -1;
+	for (size_t i = 0; i < currentFilteredPresets_.size(); ++i)
+	{
+		if (currentFilteredPresets_[i].file == cur.file)
+		{
+			curIdx = static_cast<int>(i);
+			break;
+		}
+	}
+
+	int prevIdx = (curIdx > 0) ? (curIdx - 1) : static_cast<int>(currentFilteredPresets_.size() - 1);
+	handlePresetSelected(prevIdx);
+	presetListBox_.selectRow(prevIdx);
+	presetListBox_.scrollToEnsureRowIsOnscreen(prevIdx);
+	return true;
+}
+
+bool PresetBrowserComponent::selectNextPreset()
+{
+	if (currentFilteredPresets_.empty())
+	{
+		bool ok = presetManager_.nextPreset(engine_);
+		if (ok)
+		{
+			refreshBrowser();
+			if (onPresetLoaded)
+				onPresetLoaded();
+		}
+		return ok;
+	}
+
+	auto cur = presetManager_.getCurrentPreset();
+	int curIdx = -1;
+	for (size_t i = 0; i < currentFilteredPresets_.size(); ++i)
+	{
+		if (currentFilteredPresets_[i].file == cur.file)
+		{
+			curIdx = static_cast<int>(i);
+			break;
+		}
+	}
+
+	int nextIdx = (curIdx >= 0 && curIdx + 1 < static_cast<int>(currentFilteredPresets_.size())) ? (curIdx + 1) : 0;
+	handlePresetSelected(nextIdx);
+	presetListBox_.selectRow(nextIdx);
+	presetListBox_.scrollToEnsureRowIsOnscreen(nextIdx);
+	return true;
+}
+
+bool PresetBrowserComponent::isSearchBoxFocused() const
+{
+	return searchBox_.hasKeyboardFocus(true);
+}
+
+bool PresetBrowserComponent::keyPressed(const juce::KeyPress& key)
+{
+	if (searchBox_.hasKeyboardFocus(true))
+	{
+		if (key == juce::KeyPress::returnKey || key == juce::KeyPress::downKey)
+		{
+			presetListBox_.grabKeyboardFocus();
+			if (!currentFilteredPresets_.empty())
+			{
+				handlePresetSelected(0);
+				presetListBox_.selectRow(0);
+				presetListBox_.scrollToEnsureRowIsOnscreen(0);
+			}
+			return true;
+		}
+		if (key == juce::KeyPress::escapeKey)
+		{
+			searchBox_.setText("");
+			presetListBox_.grabKeyboardFocus();
+			return true;
+		}
+		return false;
+	}
+
+	if (key == juce::KeyPress::leftKey || key == juce::KeyPress::upKey)
+	{
+		return selectPreviousPreset();
+	}
+	if (key == juce::KeyPress::rightKey || key == juce::KeyPress::downKey)
+	{
+		return selectNextPreset();
+	}
+	if (key == juce::KeyPress::escapeKey)
+	{
+		if (onCloseClicked)
+			onCloseClicked();
+		return true;
+	}
+
+	return false;
 }
 
 void PresetBrowserComponent::paint(juce::Graphics& g)

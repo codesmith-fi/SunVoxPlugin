@@ -15,9 +15,14 @@ public:
 
 	void paint(juce::Graphics& g) override;
 	void resized() override;
+	bool keyPressed(const juce::KeyPress& key) override;
 
 	void refreshBrowser();
 	void selectCategory(const juce::String& category);
+
+	bool selectPreviousPreset();
+	bool selectNextPreset();
+	bool isSearchBoxFocused() const;
 
 	std::function<void()> onPresetLoaded;
 	std::function<void()> onCloseClicked;
@@ -26,7 +31,7 @@ private:
 	PresetManager& presetManager_;
 	SunVoxEngine& engine_;
 
-	juce::TextButton closeButton_{"✕"};
+	juce::TextButton closeButton_{juce::CharPointer_UTF8("✕")};
 	juce::TextEditor searchBox_;
 	juce::TextButton prevButton_{"<"};
 	juce::TextButton nextButton_{">"};

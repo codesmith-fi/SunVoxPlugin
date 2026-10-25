@@ -15,6 +15,7 @@ SunVoxAudioProcessorEditor::SunVoxAudioProcessorEditor(SunVoxAudioProcessor& own
 	setSize(1280, 720);
 	setResizable(true, true);
 	setResizeLimits(750, 480, 2560, 1440);
+	setWantsKeyboardFocus(true);
 
 	// Style virtual keyboard
 	keyboardComponent_.setKeyWidth(18.0f);
@@ -72,16 +73,14 @@ SunVoxAudioProcessorEditor::SunVoxAudioProcessorEditor(SunVoxAudioProcessor& own
 	prevPresetBtn_.setColour(juce::TextButton::buttonColourId, juce::Colour(0xff2b323d));
 	prevPresetBtn_.setColour(juce::TextButton::textColourOffId, juce::Colour(0xffe5e9f0));
 	prevPresetBtn_.onClick = [this] {
-		if (processor_.getPresetManager().prevPreset(processor_.getSunVoxEngine()))
-			refreshUI();
+		presetBrowser_.selectPreviousPreset();
 	};
 	addAndMakeVisible(prevPresetBtn_);
 
 	nextPresetBtn_.setColour(juce::TextButton::buttonColourId, juce::Colour(0xff2b323d));
 	nextPresetBtn_.setColour(juce::TextButton::textColourOffId, juce::Colour(0xffe5e9f0));
 	nextPresetBtn_.onClick = [this] {
-		if (processor_.getPresetManager().nextPreset(processor_.getSunVoxEngine()))
-			refreshUI();
+		presetBrowser_.selectNextPreset();
 	};
 	addAndMakeVisible(nextPresetBtn_);
 
@@ -285,6 +284,63 @@ void SunVoxAudioProcessorEditor::resized()
 
 	graphCanvas_.setBounds(contentArea);
 	inspectorPanel_.setBounds(inspectorArea);
+}
+
+void SunVoxAudioProcessorEditor::mouseDown(const juce::MouseEvent&)
+{
+	grabKeyboardFocus();
+}
+
+bool SunVoxAudioProcessorEditor::keyPressed(const juce::KeyPress& key)
+{
+	// If search box in preset browser has focus, let it handle standard typing and cursor movement
+	if (isBrowserOpen_ && presetBrowser_.isSearchBoxFocused())
+	{
+		if (key == juce::KeyPress::downKey || key == juce::KeyPress::returnKey)
+			return presetBrowser_.keyPressed(key);
+
+		// If shift or ctrl is pressed, allow preset changing anyway
+		if (key.getModifiers().isShiftDown() || key.getModifiers().isCtrlDown())
+		{
+			if (key.isKeyCode(juce::KeyPress::leftKey) || key.isKeyCode(juce::KeyPress::upKey))
+				return presetBrowser_.selectPreviousPreset();
+			if (key.isKeyCode(juce::KeyPress::rightKey) || key.isKeyCode(juce::KeyPress::downKey))
+				return presetBrowser_.selectNextPreset();
+		}
+
+		return false;
+	}
+
+	if (key.isKeyCode(juce::KeyPress::leftKey))
+	{
+		return presetBrowser_.selectPreviousPreset();
+	}
+	if (key.isKeyCode(juce::KeyPress::rightKey))
+	{
+		return presetBrowser_.selectNextPreset();
+	}
+
+	if (isBrowserOpen_)
+	{
+		if (key.isKeyCode(juce::KeyPress::upKey))
+		{
+			return presetBrowser_.selectPreviousPreset();
+		}
+		if (key.isKeyCode(juce::KeyPress::downKey))
+		{
+			return presetBrowser_.selectNextPreset();
+		}
+		if (key.isKeyCode(juce::KeyPress::escapeKey))
+		{
+			isBrowserOpen_ = false;
+			presetBrowser_.setVisible(false);
+			resized();
+			repaint();
+			return true;
+		}
+	}
+
+	return false;
 }
 
 } // namespace sunvox
