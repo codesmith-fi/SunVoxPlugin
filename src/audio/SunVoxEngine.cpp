@@ -4,6 +4,7 @@
 #include <iostream>
 #include <filesystem>
 #include <cstring>
+#include <juce_core/juce_core.h>
 
 #if defined(__unix__) || defined(__linux__) || defined(__APPLE__)
 #include <dlfcn.h>
@@ -54,6 +55,26 @@ bool SunVoxEngine::loadLibrary(const std::string& libraryPath)
 	candidatePaths.push_back("../../../sunvox_lib/linux/x86_64/sunvox.so");
 	candidatePaths.push_back("sunvox_lib/sunvox_lib/linux/x86_64/sunvox.so");
 	candidatePaths.push_back("../sunvox_lib/sunvox_lib/linux/x86_64/sunvox.so");
+
+	// Check relative to current application / plugin bundle (VST3 / CLAP / Standalone)
+	auto appFile = juce::File::getSpecialLocation(juce::File::currentApplicationFile);
+	if (appFile.exists())
+	{
+		candidatePaths.push_back(appFile.getParentDirectory().getChildFile("sunvox.so").getFullPathName().toStdString());
+		candidatePaths.push_back(appFile.getParentDirectory().getParentDirectory().getChildFile("Resources").getChildFile("sunvox.so").getFullPathName().toStdString());
+	}
+
+	auto execFile = juce::File::getSpecialLocation(juce::File::currentExecutableFile);
+	if (execFile.exists())
+	{
+		candidatePaths.push_back(execFile.getParentDirectory().getChildFile("sunvox.so").getFullPathName().toStdString());
+	}
+
+	auto userHome = juce::File::getSpecialLocation(juce::File::userHomeDirectory);
+	candidatePaths.push_back(userHome.getChildFile(".local/share/SunVoxPlugin/sunvox.so").getFullPathName().toStdString());
+	candidatePaths.push_back(userHome.getChildFile(".vst3/SunVoxPlugin.vst3/Contents/x86_64-linux/sunvox.so").getFullPathName().toStdString());
+	candidatePaths.push_back(userHome.getChildFile(".clap/sunvox.so").getFullPathName().toStdString());
+	candidatePaths.push_back("/usr/local/lib/sunvox.so");
 
 	for (const auto& path : candidatePaths)
 	{

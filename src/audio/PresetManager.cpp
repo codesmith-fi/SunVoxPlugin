@@ -15,10 +15,47 @@ juce::File PresetManager::findPresetsDirectory(const juce::File& explicitDir)
 	if (explicitDir.isDirectory())
 		return explicitDir;
 
+	// 1. Environment variable override
+	auto envDir = juce::SystemStats::getEnvironmentVariable("SUNVOX_ASSETS_DIR", {});
+	if (envDir.isNotEmpty())
+	{
+		auto envFile = juce::File(envDir);
+		if (envFile.getChildFile("instruments").isDirectory())
+			return envFile.getChildFile("instruments");
+		if (envFile.isDirectory())
+			return envFile;
+	}
+
+	// 2. Standard XDG data directory (~/.local/share/SunVoxPlugin)
+	auto userLocalShare = juce::File::getSpecialLocation(juce::File::userHomeDirectory)
+	                          .getChildFile(".local/share/SunVoxPlugin");
+	if (userLocalShare.getChildFile("assets/instruments").isDirectory())
+		return userLocalShare.getChildFile("assets/instruments");
+	if (userLocalShare.getChildFile("instruments").isDirectory())
+		return userLocalShare.getChildFile("instruments");
+
+	// 3. VST3 bundle resources directory
+	auto appFile = juce::File::getSpecialLocation(juce::File::currentApplicationFile);
+	if (appFile.exists())
+	{
+		auto bundleResources = appFile.getParentDirectory().getParentDirectory().getChildFile("Resources");
+		if (bundleResources.getChildFile("assets/instruments").isDirectory())
+			return bundleResources.getChildFile("assets/instruments");
+		if (bundleResources.getChildFile("instruments").isDirectory())
+			return bundleResources.getChildFile("instruments");
+	}
+
+	// 4. Standard ~/.vst3 bundle location
+	auto homeVst3 = juce::File::getSpecialLocation(juce::File::userHomeDirectory)
+	                    .getChildFile(".vst3/SunVoxPlugin.vst3/Contents/Resources");
+	if (homeVst3.getChildFile("assets/instruments").isDirectory())
+		return homeVst3.getChildFile("assets/instruments");
+
+	// 5. Relative search from CWD, executable, application
 	std::vector<juce::File> searchRoots = {
 		juce::File::getCurrentWorkingDirectory(),
 		juce::File::getSpecialLocation(juce::File::currentExecutableFile).getParentDirectory(),
-		juce::File::getSpecialLocation(juce::File::currentApplicationFile).getParentDirectory()
+		appFile.getParentDirectory()
 	};
 
 	for (const auto& root : searchRoots)
