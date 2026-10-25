@@ -34,11 +34,11 @@ void GraphCanvas::updateFromEngine(const std::vector<ModuleInfo>& modules)
 	nodeMap_.clear();
 	removeAllChildren();
 
-	// Default layout coordinates: Generator x=150, y=180; Output x=420, y=180
-	int autoXGenerator = 150;
-	int autoYGenerator = 180;
-	int autoXOutput = 420;
-	int autoYOutput = 180;
+	// Default layout coordinates: Generator x=180, y=220; Output x=560, y=220
+	int autoXGenerator = 180;
+	int autoYGenerator = 220;
+	int autoXOutput = 560;
+	int autoYOutput = 220;
 
 	for (const auto& info : modules)
 	{
