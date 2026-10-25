@@ -93,10 +93,13 @@ jobs:
         run: |
           $zipName = "SunVoxPlugin-${{ steps.version.outputs.val }}-${{ matrix.platform }}.zip"
           New-Item -ItemType Directory -Force -Path staging/VST3, staging/CLAP, staging/Standalone, staging/assets
-          Copy-Item -Recurse -Force "build/SunVoxPlugin_artefacts/${{ matrix.build_type }}/VST3/SunVoxPlugin.vst3" "staging/VST3/"
-          Copy-Item -Force "build/SunVoxPlugin_artefacts/${{ matrix.build_type }}/CLAP/SunVoxPlugin.clap" "staging/CLAP/"
+          $vst3 = Get-ChildItem -Path "build" -Filter "SunVoxPlugin.vst3" -Recurse | Select-Object -First 1
+          Copy-Item -Recurse -Force $vst3.FullName "staging/VST3/"
+          $clap = Get-ChildItem -Path "build" -Filter "SunVoxPlugin.clap" -Recurse | Select-Object -First 1
+          Copy-Item -Force $clap.FullName "staging/CLAP/"
           Copy-Item -Force "sunvox_lib/sunvox_lib/windows/lib_x86_64/sunvox.dll" "staging/CLAP/"
-          Copy-Item -Force "build/SunVoxPlugin_artefacts/${{ matrix.build_type }}/Standalone/SunVoxPlugin.exe" "staging/Standalone/"
+          $exe = Get-ChildItem -Path "build" -Filter "SunVoxPlugin.exe" -Recurse | Select-Object -First 1
+          Copy-Item -Force $exe.FullName "staging/Standalone/"
           Copy-Item -Force "sunvox_lib/sunvox_lib/windows/lib_x86_64/sunvox.dll" "staging/Standalone/"
           Copy-Item -Recurse -Force "assets/*" "staging/assets/"
           Compress-Archive -Path "staging/*" -DestinationPath "$zipName" -Force
