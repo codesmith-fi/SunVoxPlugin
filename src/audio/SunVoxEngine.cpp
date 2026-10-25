@@ -334,6 +334,47 @@ bool SunVoxEngine::disconnectModule(int source, int destination)
 	return res == 0;
 }
 
+bool SunVoxEngine::disconnectAllInputs(int modId)
+{
+	if (!isInitialized_ || modId < 0)
+		return false;
+
+	auto modules = getActiveModules();
+	bool anyDisconnected = false;
+	for (const auto& mod : modules)
+	{
+		for (int dest : mod.outputConnections)
+		{
+			if (dest == modId)
+			{
+				if (disconnectModule(mod.id, modId))
+					anyDisconnected = true;
+			}
+		}
+	}
+	return anyDisconnected;
+}
+
+bool SunVoxEngine::disconnectAllOutputs(int modId)
+{
+	if (!isInitialized_ || modId < 0)
+		return false;
+
+	auto modules = getActiveModules();
+	for (const auto& mod : modules)
+	{
+		if (mod.id == modId)
+		{
+			for (int dest : mod.outputConnections)
+			{
+				disconnectModule(modId, dest);
+			}
+			return true;
+		}
+	}
+	return false;
+}
+
 bool SunVoxEngine::setModuleXY(int modId, int x, int y)
 {
 	if (!isInitialized_ || modId < 0)

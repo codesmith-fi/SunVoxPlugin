@@ -62,6 +62,10 @@ public:
 	bool removeModule(int modId);
 	bool connectModule(int source, int destination);
 	bool disconnectModule(int source, int destination);
+	bool connectModules(int sourceId, int destinationId) { return connectModule(sourceId, destinationId); }
+	bool disconnectModules(int sourceId, int destinationId) { return disconnectModule(sourceId, destinationId); }
+	bool disconnectAllInputs(int modId);
+	bool disconnectAllOutputs(int modId);
 	bool setModuleXY(int modId, int x, int y);
 
 	std::vector<ControllerInfo> getModuleControllers(int modId);

@@ -40,7 +40,22 @@ private:
 	std::vector<std::unique_ptr<ModuleNodeComponent>> nodes_;
 	std::unordered_map<int, ModuleNodeComponent*> nodeMap_;
 
+	// Cable drag state
+	bool isDraggingCable_{false};
+	int dragSourceNodeId_{-1};
+	juce::Point<float> dragSourcePinPos_;
+	juce::Point<float> dragCurrentPos_;
+	int dragHoverTargetNodeId_{-1};
+
+	void handleCableDragStarted(int sourceId, juce::Point<float> startPos);
+	void handleCableDragging(juce::Point<float> currentPos);
+	void handleCableDragEnded(juce::Point<float> releasePos);
+
 	void showContextMenu(juce::Point<int> screenPos, juce::Point<int> canvasPos);
+	void showNodeContextMenu(int modId, juce::Point<int> screenPos);
+	void showInputPinContextMenu(int modId, juce::Point<int> screenPos);
+
+	std::optional<std::pair<int, int>> findCableAt(juce::Point<float> pos) const;
 	void drawCable(juce::Graphics& g, juce::Point<float> p0, juce::Point<float> p3);
 
 	JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(GraphCanvas)

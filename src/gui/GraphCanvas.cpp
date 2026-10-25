@@ -54,6 +54,26 @@ void GraphCanvas::updateFromEngine(const std::vector<ModuleInfo>& modules)
 			repaint();
 		};
 
+		node->onCableDragStarted = [this](int srcId, juce::Point<float> pinPos) {
+			handleCableDragStarted(srcId, pinPos);
+		};
+
+		node->onCableDragging = [this](juce::Point<float> curPos) {
+			handleCableDragging(curPos);
+		};
+
+		node->onCableDragEnded = [this](juce::Point<float> relPos) {
+			handleCableDragEnded(relPos);
+		};
+
+		node->onNodeRightClicked = [this](int modId, juce::Point<int> screenPos) {
+			showNodeContextMenu(modId, screenPos);
+		};
+
+		node->onInputPinRightClicked = [this](int modId, juce::Point<int> screenPos) {
+			showInputPinContextMenu(modId, screenPos);
+		};
+
 		// Position resolution
 		juce::Point<int> pos;
 		if (auto it = existingPositions.find(info.id); it != existingPositions.end())
@@ -113,8 +133,287 @@ void GraphCanvas::mouseUp(const juce::MouseEvent& e)
 {
 	if (e.mods.isPopupMenu())
 	{
+		auto hitCable = findCableAt(e.position.toFloat());
+		if (hitCable.has_value())
+		{
+			int srcId = hitCable->first;
+			int dstId = hitCable->second;
+
+			std::string srcName = "Module #" + std::to_string(srcId);
+			std::string dstName = "Module #" + std::to_string(dstId);
+
+			if (auto srcIt = nodeMap_.find(srcId); srcIt != nodeMap_.end() && srcIt->second)
+				srcName = srcIt->second->getModuleInfo().name;
+			if (auto dstIt = nodeMap_.find(dstId); dstIt != nodeMap_.end() && dstIt->second)
+				dstName = dstIt->second->getModuleInfo().name;
+
+			juce::PopupMenu cableMenu;
+			cableMenu.addSectionHeader("Cable: " + srcName + " -> " + dstName);
+			cableMenu.addItem(1, "Disconnect Cable");
+
+			cableMenu.showMenuAsync(juce::PopupMenu::Options().withTargetScreenArea(juce::Rectangle<int>(e.getScreenX(), e.getScreenY(), 1, 1)),
+				[this, srcId, dstId](int result) {
+					if (result == 1 && engine_ != nullptr)
+					{
+						engine_->disconnectModules(srcId, dstId);
+						refreshFromEngine();
+					}
+				});
+			return;
+		}
+
 		showContextMenu(e.getScreenPosition(), e.getPosition());
 	}
+}
+
+void GraphCanvas::handleCableDragStarted(int sourceId, juce::Point<float> startPos)
+{
+	isDraggingCable_ = true;
+	dragSourceNodeId_ = sourceId;
+	dragSourcePinPos_ = startPos;
+	dragCurrentPos_ = startPos;
+	dragHoverTargetNodeId_ = -1;
+	repaint();
+}
+
+void GraphCanvas::handleCableDragging(juce::Point<float> currentPos)
+{
+	dragCurrentPos_ = currentPos;
+	int newHoverTarget = -1;
+
+	for (const auto& node : nodes_)
+	{
+		if (node->getModuleId() == dragSourceNodeId_)
+			continue;
+
+		auto inputPinPos = node->getInputPinPosition();
+		bool nearInputPin = (currentPos.getDistanceFrom(inputPinPos) <= 24.0f);
+		bool insideNode = node->getBounds().toFloat().contains(currentPos);
+
+		if (nearInputPin || insideNode)
+		{
+			newHoverTarget = node->getModuleId();
+			break;
+		}
+	}
+
+	if (dragHoverTargetNodeId_ != newHoverTarget)
+	{
+		if (auto it = nodeMap_.find(dragHoverTargetNodeId_); it != nodeMap_.end() && it->second)
+			it->second->setInputPinHighlighted(false);
+
+		dragHoverTargetNodeId_ = newHoverTarget;
+
+		if (auto it = nodeMap_.find(dragHoverTargetNodeId_); it != nodeMap_.end() && it->second)
+			it->second->setInputPinHighlighted(true);
+	}
+
+	repaint();
+}
+
+void GraphCanvas::handleCableDragEnded(juce::Point<float> releasePos)
+{
+	isDraggingCable_ = false;
+
+	if (dragHoverTargetNodeId_ >= 0)
+	{
+		if (auto it = nodeMap_.find(dragHoverTargetNodeId_); it != nodeMap_.end() && it->second)
+			it->second->setInputPinHighlighted(false);
+	}
+
+	int targetId = dragHoverTargetNodeId_;
+	if (targetId < 0)
+	{
+		for (const auto& node : nodes_)
+		{
+			if (node->getModuleId() == dragSourceNodeId_)
+				continue;
+
+			auto inputPinPos = node->getInputPinPosition();
+			if (releasePos.getDistanceFrom(inputPinPos) <= 24.0f || node->getBounds().toFloat().contains(releasePos))
+			{
+				targetId = node->getModuleId();
+				break;
+			}
+		}
+	}
+
+	int sourceId = dragSourceNodeId_;
+	dragHoverTargetNodeId_ = -1;
+	dragSourceNodeId_ = -1;
+
+	if (targetId >= 0 && targetId != sourceId && engine_ != nullptr)
+	{
+		engine_->connectModules(sourceId, targetId);
+		refreshFromEngine();
+	}
+
+	repaint();
+}
+
+std::optional<std::pair<int, int>> GraphCanvas::findCableAt(juce::Point<float> pos) const
+{
+	for (const auto& node : nodes_)
+	{
+		int srcId = node->getModuleId();
+		for (int dstId : node->getModuleInfo().outputConnections)
+		{
+			auto it = nodeMap_.find(dstId);
+			if (it != nodeMap_.end() && it->second != nullptr)
+			{
+				auto p0 = node->getOutputPinPosition();
+				auto p3 = it->second->getInputPinPosition();
+
+				float dx = std::max(50.0f, std::abs(p3.x - p0.x) * 0.5f);
+				float sag = std::clamp(std::abs(p3.x - p0.x) * 0.08f, 0.0f, 30.0f);
+				juce::Point<float> p1(p0.x + dx, p0.y + sag);
+				juce::Point<float> p2(p3.x - dx, p3.y + sag);
+
+				juce::Path cable;
+				cable.startNewSubPath(p0);
+				cable.cubicTo(p1, p2, p3);
+
+				juce::Path stroked;
+				juce::PathStrokeType(14.0f).createStrokedPath(stroked, cable);
+				if (stroked.contains(pos))
+				{
+					return std::make_pair(srcId, dstId);
+				}
+			}
+		}
+	}
+	return std::nullopt;
+}
+
+void GraphCanvas::showNodeContextMenu(int modId, juce::Point<int> screenPos)
+{
+	if (engine_ == nullptr)
+		return;
+
+	auto it = nodeMap_.find(modId);
+	if (it == nodeMap_.end() || it->second == nullptr)
+		return;
+
+	const auto& info = it->second->getModuleInfo();
+
+	juce::PopupMenu menu;
+	menu.addSectionHeader(juce::String(info.name) + " [#" + juce::String(info.id) + "]");
+
+	menu.addItem(1, "Disconnect All Inputs");
+	menu.addItem(2, "Disconnect All Outputs");
+
+	if (!info.outputConnections.empty())
+	{
+		juce::PopupMenu outSubMenu;
+		int subId = 100;
+		for (int destId : info.outputConnections)
+		{
+			std::string destName = "Module #" + std::to_string(destId);
+			if (auto destIt = nodeMap_.find(destId); destIt != nodeMap_.end() && destIt->second)
+				destName = destIt->second->getModuleInfo().name;
+
+			outSubMenu.addItem(subId++, "Disconnect to " + destName);
+		}
+		menu.addSubMenu("Disconnect Output...", outSubMenu);
+	}
+
+	if (modId != 0)
+	{
+		menu.addSeparator();
+		menu.addItem(10, "Remove Module");
+	}
+
+	menu.showMenuAsync(juce::PopupMenu::Options().withTargetScreenArea(juce::Rectangle<int>(screenPos.x, screenPos.y, 1, 1)),
+		[this, modId, info](int result) {
+			if (result == 0 || engine_ == nullptr)
+				return;
+
+			if (result == 1)
+			{
+				engine_->disconnectAllInputs(modId);
+				refreshFromEngine();
+			}
+			else if (result == 2)
+			{
+				engine_->disconnectAllOutputs(modId);
+				refreshFromEngine();
+			}
+			else if (result == 10)
+			{
+				engine_->disconnectAllInputs(modId);
+				engine_->disconnectAllOutputs(modId);
+				engine_->removeModule(modId);
+				if (selectedModuleId_ == modId)
+					selectModule(-1);
+				refreshFromEngine();
+			}
+			else if (result >= 100)
+			{
+				size_t idx = static_cast<size_t>(result - 100);
+				if (idx < info.outputConnections.size())
+				{
+					int destId = info.outputConnections[idx];
+					engine_->disconnectModules(modId, destId);
+					refreshFromEngine();
+				}
+			}
+		});
+}
+
+void GraphCanvas::showInputPinContextMenu(int modId, juce::Point<int> screenPos)
+{
+	if (engine_ == nullptr)
+		return;
+
+	juce::PopupMenu menu;
+	menu.addSectionHeader("Input Connections");
+	menu.addItem(1, "Disconnect All Inputs");
+
+	std::vector<int> incomingSources;
+	for (const auto& node : nodes_)
+	{
+		for (int destId : node->getModuleInfo().outputConnections)
+		{
+			if (destId == modId)
+				incomingSources.push_back(node->getModuleId());
+		}
+	}
+
+	if (!incomingSources.empty())
+	{
+		juce::PopupMenu subMenu;
+		int subId = 100;
+		for (int srcId : incomingSources)
+		{
+			std::string srcName = "Module #" + std::to_string(srcId);
+			if (auto srcIt = nodeMap_.find(srcId); srcIt != nodeMap_.end() && srcIt->second)
+				srcName = srcIt->second->getModuleInfo().name;
+
+			subMenu.addItem(subId++, "Disconnect from " + srcName);
+		}
+		menu.addSubMenu("Disconnect Source...", subMenu);
+	}
+
+	menu.showMenuAsync(juce::PopupMenu::Options().withTargetScreenArea(juce::Rectangle<int>(screenPos.x, screenPos.y, 1, 1)),
+		[this, modId, incomingSources](int result) {
+			if (result == 0 || engine_ == nullptr)
+				return;
+
+			if (result == 1)
+			{
+				engine_->disconnectAllInputs(modId);
+				refreshFromEngine();
+			}
+			else if (result >= 100)
+			{
+				size_t idx = static_cast<size_t>(result - 100);
+				if (idx < incomingSources.size())
+				{
+					engine_->disconnectModules(incomingSources[idx], modId);
+					refreshFromEngine();
+				}
+			}
+		});
 }
 
 void GraphCanvas::showContextMenu(juce::Point<int> screenPos, juce::Point<int> canvasPos)
@@ -270,6 +569,42 @@ void GraphCanvas::paintOverChildren(juce::Graphics& g)
 				drawCable(g, p0, p3);
 			}
 		}
+	}
+
+	// Draw dragging cable if in progress
+	if (isDraggingCable_)
+	{
+		juce::Point<float> p0 = dragSourcePinPos_;
+		juce::Point<float> p3 = dragCurrentPos_;
+
+		if (dragHoverTargetNodeId_ >= 0)
+		{
+			if (auto it = nodeMap_.find(dragHoverTargetNodeId_); it != nodeMap_.end() && it->second != nullptr)
+			{
+				p3 = it->second->getInputPinPosition();
+			}
+		}
+
+		float dx = std::max(40.0f, std::abs(p3.x - p0.x) * 0.5f);
+		float sag = std::clamp(std::abs(p3.x - p0.x) * 0.08f, 0.0f, 30.0f);
+		juce::Point<float> p1(p0.x + dx, p0.y + sag);
+		juce::Point<float> p2(p3.x - dx, p3.y + sag);
+
+		juce::Path dragCable;
+		dragCable.startNewSubPath(p0);
+		dragCable.cubicTo(p1, p2, p3);
+
+		// Outer glow
+		g.setColour(juce::Colour(0x4400ffcc));
+		g.strokePath(dragCable, juce::PathStrokeType(7.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+
+		// Glowing temporary cable line
+		g.setColour(juce::Colour(0xff00ffcc));
+		g.strokePath(dragCable, juce::PathStrokeType(3.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+
+		// Pin end circles
+		g.fillEllipse(p0.x - 3.5f, p0.y - 3.5f, 7.0f, 7.0f);
+		g.fillEllipse(p3.x - 3.5f, p3.y - 3.5f, 7.0f, 7.0f);
 	}
 }
 

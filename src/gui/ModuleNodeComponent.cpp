@@ -36,6 +36,31 @@ void ModuleNodeComponent::setSelected(bool selected)
 	}
 }
 
+void ModuleNodeComponent::setInputPinHighlighted(bool highlighted)
+{
+	if (isInputPinHighlighted_ != highlighted)
+	{
+		isInputPinHighlighted_ = highlighted;
+		repaint();
+	}
+}
+
+ModuleNodeComponent::PinType ModuleNodeComponent::getPinAt(juce::Point<int> localPos) const
+{
+	auto p = localPos.toFloat();
+	float centerY = static_cast<float>(getHeight()) * 0.5f;
+
+	juce::Point<float> inputPinCenter(kPinRadius, centerY);
+	if (p.getDistanceFrom(inputPinCenter) <= kPinHitRadius)
+		return PinType::Input;
+
+	juce::Point<float> outputPinCenter(static_cast<float>(getWidth()) - kPinRadius, centerY);
+	if (p.getDistanceFrom(outputPinCenter) <= kPinHitRadius)
+		return PinType::Output;
+
+	return PinType::None;
+}
+
 void ModuleNodeComponent::paint(juce::Graphics& g)
 {
 	auto bounds = getLocalBounds().toFloat();
@@ -81,9 +106,19 @@ void ModuleNodeComponent::paint(juce::Graphics& g)
 
 	// Input Pin (Left)
 	const float centerY = static_cast<float>(getHeight()) * 0.5f;
-	g.setColour(juce::Colour(0xff14171d));
+
+	if (isInputPinHighlighted_)
+	{
+		// Glowing hover ring when connecting
+		g.setColour(juce::Colour(0x6600ffcc));
+		g.fillEllipse(-4.0f, centerY - (kPinRadius + 4.0f), (kPinRadius + 4.0f) * 2.0f, (kPinRadius + 4.0f) * 2.0f);
+		g.setColour(juce::Colour(0xff00ffcc));
+		g.drawEllipse(-4.0f, centerY - (kPinRadius + 4.0f), (kPinRadius + 4.0f) * 2.0f, (kPinRadius + 4.0f) * 2.0f, 2.0f);
+	}
+
+	g.setColour(isInputPinHighlighted_ ? juce::Colour(0xff00ffcc) : juce::Colour(0xff14171d));
 	g.fillEllipse(0.0f, centerY - kPinRadius, kPinRadius * 2.0f, kPinRadius * 2.0f);
-	g.setColour(juce::Colour(0xff00e5ff));
+	g.setColour(isInputPinHighlighted_ ? juce::Colours::white : juce::Colour(0xff00e5ff));
 	g.drawEllipse(0.0f, centerY - kPinRadius, kPinRadius * 2.0f, kPinRadius * 2.0f, 1.5f);
 
 	// Output Pin (Right)
@@ -95,22 +130,71 @@ void ModuleNodeComponent::paint(juce::Graphics& g)
 
 void ModuleNodeComponent::mouseDown(const juce::MouseEvent& e)
 {
+	if (e.mods.isPopupMenu())
+	{
+		auto pin = getPinAt(e.getPosition());
+		if (pin == PinType::Input && onInputPinRightClicked)
+		{
+			onInputPinRightClicked(info_.id, e.getScreenPosition());
+		}
+		else if (onNodeRightClicked)
+		{
+			onNodeRightClicked(info_.id, e.getScreenPosition());
+		}
+		return;
+	}
+
+	auto pin = getPinAt(e.getPosition());
+	if (pin == PinType::Output)
+	{
+		isDraggingCable_ = true;
+		if (onCableDragStarted)
+			onCableDragStarted(info_.id, getOutputPinPosition());
+		return;
+	}
+
 	if (e.mods.isLeftButtonDown())
 	{
 		if (onSelected)
 			onSelected(info_.id);
 	}
 
+	isDraggingCable_ = false;
 	dragger_.startDraggingComponent(this, e);
 	toFront(true);
 }
 
 void ModuleNodeComponent::mouseDrag(const juce::MouseEvent& e)
 {
+	if (isDraggingCable_)
+	{
+		if (auto* parent = getParentComponent())
+		{
+			auto canvasPos = e.getEventRelativeTo(parent).position;
+			if (onCableDragging)
+				onCableDragging(canvasPos);
+		}
+		return;
+	}
+
 	dragger_.dragComponent(this, e, nullptr);
 
 	if (onMoved)
 		onMoved();
+}
+
+void ModuleNodeComponent::mouseUp(const juce::MouseEvent& e)
+{
+	if (isDraggingCable_)
+	{
+		isDraggingCable_ = false;
+		if (auto* parent = getParentComponent())
+		{
+			auto canvasPos = e.getEventRelativeTo(parent).position;
+			if (onCableDragEnded)
+				onCableDragEnded(canvasPos);
+		}
+	}
 }
 
 juce::Point<float> ModuleNodeComponent::getInputPinPosition() const
@@ -124,3 +208,4 @@ juce::Point<float> ModuleNodeComponent::getOutputPinPosition() const
 }
 
 } // namespace sunvox
+
