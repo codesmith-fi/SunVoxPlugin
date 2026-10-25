@@ -221,10 +221,15 @@ void SunVoxAudioProcessorEditor::paint(juce::Graphics& g)
 	g.setColour(juce::Colour(0xff2d3139));
 	g.drawHorizontalLine(headerArea.getBottom(), 0.0f, static_cast<float>(getWidth()));
 
-	// Title
+	// Title & version
+	auto titleArea = headerArea.removeFromLeft(230).reduced(12, 0);
 	g.setColour(juce::Colours::white);
-	g.setFont(juce::FontOptions(17.0f, juce::Font::bold));
-	g.drawText("SUNVOX MODULAR SYNTH", headerArea.removeFromLeft(230).reduced(12, 0), juce::Justification::centredLeft);
+	g.setFont(juce::FontOptions(15.0f, juce::Font::bold));
+	g.drawText("SUNVOX MODULAR", titleArea.removeFromTop(27), juce::Justification::bottomLeft);
+
+	g.setColour(juce::Colour(0xff00e5ff));
+	g.setFont(juce::FontOptions(11.0f, juce::Font::bold));
+	g.drawText("SYNTH  v" JucePlugin_VersionString, titleArea, juce::Justification::topLeft);
 
 	// Status badge
 	const auto& engine = processor_.getSunVoxEngine();

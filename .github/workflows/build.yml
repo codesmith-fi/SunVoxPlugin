@@ -2,10 +2,12 @@ name: CI Build & Package
 
 on:
   push:
-    branches: [ "master", "main" ]
-  pull_request:
-    branches: [ "master", "main" ]
+    tags:
+      - '*'
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -22,11 +24,11 @@ jobs:
           - os: ubuntu-latest
             name: Linux
             build_type: Release
-            artifact_name: SunVoxPlugin-Linux-x86_64
+            platform: Linux-x86_64
           - os: windows-latest
             name: Windows
             build_type: Release
-            artifact_name: SunVoxPlugin-Windows-x64
+            platform: Windows-x64
 
     steps:
       - name: Checkout repository
@@ -34,6 +36,16 @@ jobs:
         with:
           submodules: recursive
           fetch-depth: 1
+
+      - name: Determine Version
+        id: version
+        shell: bash
+        run: |
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            echo "val=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          else
+            echo "val=v0.1.0" >> $GITHUB_OUTPUT
+          fi
 
       - name: Install Linux Dependencies
         if: runner.os == 'Linux'
@@ -65,6 +77,7 @@ jobs:
       - name: Prepare Staging Directory (Linux)
         if: runner.os == 'Linux'
         run: |
+          ZIP_NAME="SunVoxPlugin-${{ steps.version.outputs.val }}-${{ matrix.platform }}.zip"
           mkdir -p staging/VST3 staging/CLAP staging/Standalone staging/assets
           cp -r build/SunVoxPlugin_artefacts/${{ matrix.build_type }}/VST3/SunVoxPlugin.vst3 staging/VST3/
           cp build/SunVoxPlugin_artefacts/${{ matrix.build_type }}/CLAP/SunVoxPlugin.clap staging/CLAP/
@@ -72,12 +85,13 @@ jobs:
           cp build/SunVoxPlugin_artefacts/${{ matrix.build_type }}/Standalone/SunVoxPlugin staging/Standalone/
           cp build/SunVoxPlugin_artefacts/${{ matrix.build_type }}/Standalone/sunvox.so staging/Standalone/ || cp sunvox_lib/linux/x86_64/sunvox.so staging/Standalone/
           cp -r assets/* staging/assets/
-          cd staging && zip -r ../${{ matrix.artifact_name }}.zip .
+          cd staging && zip -r ../${ZIP_NAME} .
 
       - name: Prepare Staging Directory (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
+          $zipName = "SunVoxPlugin-${{ steps.version.outputs.val }}-${{ matrix.platform }}.zip"
           New-Item -ItemType Directory -Force -Path staging/VST3, staging/CLAP, staging/Standalone, staging/assets
           Copy-Item -Recurse -Force "build/SunVoxPlugin_artefacts/${{ matrix.build_type }}/VST3/SunVoxPlugin.vst3" "staging/VST3/"
           Copy-Item -Force "build/SunVoxPlugin_artefacts/${{ matrix.build_type }}/CLAP/SunVoxPlugin.clap" "staging/CLAP/"
@@ -85,11 +99,19 @@ jobs:
           Copy-Item -Force "build/SunVoxPlugin_artefacts/${{ matrix.build_type }}/Standalone/SunVoxPlugin.exe" "staging/Standalone/"
           Copy-Item -Force "sunvox_lib/sunvox_lib/windows/lib_x86_64/sunvox.dll" "staging/Standalone/"
           Copy-Item -Recurse -Force "assets/*" "staging/assets/"
-          Compress-Archive -Path "staging/*" -DestinationPath "${{ matrix.artifact_name }}.zip" -Force
+          Compress-Archive -Path "staging/*" -DestinationPath "$zipName" -Force
 
       - name: Upload Release Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact_name }}
-          path: ${{ matrix.artifact_name }}.zip
+          name: SunVoxPlugin-${{ steps.version.outputs.val }}-${{ matrix.platform }}
+          path: SunVoxPlugin-${{ steps.version.outputs.val }}-${{ matrix.platform }}.zip
           if-no-files-found: error
+
+      - name: Release to GitHub Releases
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: SunVoxPlugin-${{ steps.version.outputs.val }}-${{ matrix.platform }}.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

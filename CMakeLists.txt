@@ -21,6 +21,7 @@ endif()
 
 juce_add_plugin(SunVoxPlugin
     COMPANY_NAME "WarmPlace"
+    VERSION "0.1.0"
     PLUGIN_MANUFACTURER_CODE WrPl
     PLUGIN_CODE SvPl
     FORMATS Standalone VST3
