@@ -17,6 +17,16 @@ struct ModuleInfo
 	std::vector<int> outputConnections;
 };
 
+struct ControllerInfo
+{
+	int id{0};
+	std::string name;
+	int minValue{0};
+	int maxValue{100};
+	int currentValue{0};
+	int type{0};
+};
+
 class SunVoxEngine
 {
 public:
@@ -47,6 +57,15 @@ public:
 	bool loadProject(const std::string& filePath);
 	bool createDefaultSynth();
 	std::vector<ModuleInfo> getActiveModules();
+
+	int createModule(const std::string& type, const std::string& name, int x, int y);
+	bool removeModule(int modId);
+	bool connectModule(int source, int destination);
+	bool disconnectModule(int source, int destination);
+	bool setModuleXY(int modId, int x, int y);
+
+	std::vector<ControllerInfo> getModuleControllers(int modId);
+	void setModuleCtlValue(int modId, int ctlId, int value);
 
 private:
 	bool isLibraryLoaded_{false};

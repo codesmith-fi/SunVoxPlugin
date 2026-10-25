@@ -8,6 +8,7 @@ SunVoxAudioProcessorEditor::SunVoxAudioProcessorEditor(SunVoxAudioProcessor& own
 	: AudioProcessorEditor(&owner),
 	  processor_(owner),
 	  graphCanvas_(&processor_.getSunVoxEngine()),
+	  inspectorPanel_(&processor_.getSunVoxEngine()),
 	  keyboardComponent_(processor_.getKeyboardState(), juce::MidiKeyboardComponent::horizontalKeyboard)
 {
 	setSize(850, 620);
@@ -24,6 +25,20 @@ SunVoxAudioProcessorEditor::SunVoxAudioProcessorEditor(SunVoxAudioProcessor& own
 	// Graph Canvas for modular nodes and cables
 	addAndMakeVisible(graphCanvas_);
 	graphCanvas_.refreshFromEngine();
+
+	// Inspector panel for selected module parameters
+	addAndMakeVisible(inspectorPanel_);
+	graphCanvas_.onModuleSelected = [this](int modId) {
+		inspectorPanel_.inspectModule(modId);
+	};
+
+	// Select default synth module initially
+	int defaultMod = processor_.getSunVoxEngine().getDefaultSynthModule();
+	if (defaultMod >= 0)
+	{
+		graphCanvas_.selectModule(defaultMod);
+		inspectorPanel_.inspectModule(defaultMod);
+	}
 }
 
 SunVoxAudioProcessorEditor::~SunVoxAudioProcessorEditor()
@@ -81,7 +96,15 @@ void SunVoxAudioProcessorEditor::resized()
 	keyboardComponent_.setBounds(keyboardArea);
 
 	bounds.removeFromBottom(6); // gap above keyboard
-	graphCanvas_.setBounds(bounds.reduced(16, 8));
+	auto contentArea = bounds.reduced(16, 8);
+
+	// Inspector panel takes 240px on the right
+	const int inspectorWidth = 240;
+	auto inspectorArea = contentArea.removeFromRight(inspectorWidth);
+	contentArea.removeFromRight(10); // spacing between canvas and inspector
+
+	graphCanvas_.setBounds(contentArea);
+	inspectorPanel_.setBounds(inspectorArea);
 }
 
 } // namespace sunvox

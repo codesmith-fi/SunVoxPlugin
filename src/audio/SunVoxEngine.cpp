@@ -290,4 +290,92 @@ std::vector<ModuleInfo> SunVoxEngine::getActiveModules()
 	return modules;
 }
 
+int SunVoxEngine::createModule(const std::string& type, const std::string& name, int x, int y)
+{
+	if (!isInitialized_)
+		return -1;
+
+	sv_lock_slot(slot_);
+	int modId = sv_new_module(slot_, type.c_str(), name.c_str(), x, y, 0);
+	sv_unlock_slot(slot_);
+	return modId;
+}
+
+bool SunVoxEngine::removeModule(int modId)
+{
+	if (!isInitialized_ || modId < 0)
+		return false;
+
+	sv_lock_slot(slot_);
+	int res = sv_remove_module(slot_, modId);
+	sv_unlock_slot(slot_);
+	return res == 0;
+}
+
+bool SunVoxEngine::connectModule(int source, int destination)
+{
+	if (!isInitialized_ || source < 0 || destination < 0)
+		return false;
+
+	sv_lock_slot(slot_);
+	int res = sv_connect_module(slot_, source, destination);
+	sv_unlock_slot(slot_);
+	return res == 0;
+}
+
+bool SunVoxEngine::disconnectModule(int source, int destination)
+{
+	if (!isInitialized_ || source < 0 || destination < 0)
+		return false;
+
+	sv_lock_slot(slot_);
+	int res = sv_disconnect_module(slot_, source, destination);
+	sv_unlock_slot(slot_);
+	return res == 0;
+}
+
+bool SunVoxEngine::setModuleXY(int modId, int x, int y)
+{
+	if (!isInitialized_ || modId < 0)
+		return false;
+
+	return sv_set_module_xy(slot_, modId, x, y) == 0;
+}
+
+std::vector<ControllerInfo> SunVoxEngine::getModuleControllers(int modId)
+{
+	std::vector<ControllerInfo> controllers;
+	if (!isInitialized_ || modId < 0)
+		return controllers;
+
+	int numCtls = sv_get_number_of_module_ctls(slot_, modId);
+	if (numCtls <= 0)
+		return controllers;
+
+	controllers.reserve(static_cast<size_t>(numCtls));
+	for (int i = 0; i < numCtls; ++i)
+	{
+		ControllerInfo ctl;
+		ctl.id = i;
+		const char* name = sv_get_module_ctl_name(slot_, modId, i);
+		ctl.name = name ? name : ("Ctl " + std::to_string(i));
+		ctl.minValue = sv_get_module_ctl_min(slot_, modId, i, 0);
+		ctl.maxValue = sv_get_module_ctl_max(slot_, modId, i, 0);
+		ctl.currentValue = sv_get_module_ctl_value(slot_, modId, i, 0);
+		ctl.type = sv_get_module_ctl_type(slot_, modId, i);
+		controllers.push_back(std::move(ctl));
+	}
+
+	return controllers;
+}
+
+void SunVoxEngine::setModuleCtlValue(int modId, int ctlId, int value)
+{
+	if (!isInitialized_ || modId < 0 || ctlId < 0)
+		return;
+
+	sv_set_module_ctl_value(slot_, modId, ctlId, value, 0);
+}
+
 } // namespace sunvox
+

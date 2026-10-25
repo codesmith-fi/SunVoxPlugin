@@ -4,6 +4,7 @@
 #include <juce_audio_utils/juce_audio_utils.h>
 
 #include "GraphCanvas.hpp"
+#include "InspectorPanel.hpp"
 
 namespace sunvox
 {
@@ -22,6 +23,7 @@ public:
 private:
 	SunVoxAudioProcessor& processor_;
 	GraphCanvas graphCanvas_;
+	InspectorPanel inspectorPanel_;
 	juce::MidiKeyboardComponent keyboardComponent_;
 
 	JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SunVoxAudioProcessorEditor)

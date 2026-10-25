@@ -21,10 +21,14 @@ public:
 	int getModuleId() const noexcept { return info_.id; }
 	const ModuleInfo& getModuleInfo() const noexcept { return info_; }
 
+	void setSelected(bool selected);
+	bool isSelected() const noexcept { return isSelected_; }
+
 	juce::Point<float> getInputPinPosition() const;
 	juce::Point<float> getOutputPinPosition() const;
 
 	std::function<void()> onMoved;
+	std::function<void(int)> onSelected;
 
 	static constexpr int kDefaultWidth = 140;
 	static constexpr int kDefaultHeight = 72;
@@ -33,6 +37,7 @@ public:
 private:
 	ModuleInfo info_;
 	juce::ComponentDragger dragger_;
+	bool isSelected_{false};
 
 	juce::Colour getHeaderColor() const;
 

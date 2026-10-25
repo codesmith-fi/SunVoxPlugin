@@ -13,14 +13,27 @@ juce::Colour ModuleNodeComponent::getHeaderColor() const
 {
 	if (info_.type == "Output")
 		return juce::Colour(0xfff77f00); // Warm orange
-	if (info_.type == "Generator")
-		return juce::Colour(0xff00e5ff); // Cyan
-	if (info_.type == "Filter")
-		return juce::Colour(0xff9d4edd); // Purple
-	if (info_.type == "Amplifier")
-		return juce::Colour(0xff2ecc71); // Green
+	if (info_.type == "Generator" || info_.type == "Analog Generator" || info_.type == "FM" || info_.type == "SpectraVoice")
+		return juce::Colour(0xff00e5ff); // Cyan / Synth
+	if (info_.type == "Filter" || info_.type == "Vocal Filter")
+		return juce::Colour(0xff9d4edd); // Purple / Filter
+	if (info_.type == "Delay" || info_.type == "Reverb" || info_.type == "Flanger")
+		return juce::Colour(0xff06d6a0); // Teal / Time-based FX
+	if (info_.type == "Distortion")
+		return juce::Colour(0xffef476f); // Red / Distortion
+	if (info_.type == "Amplifier" || info_.type == "Compressor" || info_.type == "Feedback" || info_.type == "Kicker")
+		return juce::Colour(0xff2ecc71); // Green / Dynamics & Tools
 
 	return juce::Colour(0xff4a5568); // Slate default
+}
+
+void ModuleNodeComponent::setSelected(bool selected)
+{
+	if (isSelected_ != selected)
+	{
+		isSelected_ = selected;
+		repaint();
+	}
 }
 
 void ModuleNodeComponent::paint(juce::Graphics& g)
@@ -41,8 +54,19 @@ void ModuleNodeComponent::paint(juce::Graphics& g)
 	g.fillRect(headerArea.getX(), headerArea.getY() + 4.0f, headerArea.getWidth(), cornerSize * 2.0f);
 
 	// Outer border
-	g.setColour(juce::Colour(0xff3a4454));
-	g.drawRoundedRectangle(getLocalBounds().toFloat().reduced(0.5f), cornerSize, 1.0f);
+	if (isSelected_)
+	{
+		// Glow effect
+		g.setColour(juce::Colour(0x5500e5ff));
+		g.drawRoundedRectangle(getLocalBounds().toFloat().reduced(1.0f), cornerSize, 3.0f);
+		g.setColour(juce::Colour(0xff00e5ff));
+		g.drawRoundedRectangle(getLocalBounds().toFloat().reduced(0.5f), cornerSize, 1.5f);
+	}
+	else
+	{
+		g.setColour(juce::Colour(0xff3a4454));
+		g.drawRoundedRectangle(getLocalBounds().toFloat().reduced(0.5f), cornerSize, 1.0f);
+	}
 
 	// Module Name Title
 	g.setColour(juce::Colours::white);
@@ -50,7 +74,7 @@ void ModuleNodeComponent::paint(juce::Graphics& g)
 	g.drawText(info_.name, 14, 12, getWidth() - 28, 20, juce::Justification::centredLeft, true);
 
 	// Module Type and ID
-	g.setColour(juce::Colour(0xff8c96a5));
+	g.setColour(isSelected_ ? juce::Colour(0xffa5d8ff) : juce::Colour(0xff8c96a5));
 	g.setFont(juce::FontOptions(11.0f));
 	juce::String typeText = juce::String(info_.type) + " [#" + juce::String(info_.id) + "]";
 	g.drawText(typeText, 14, 34, getWidth() - 28, 16, juce::Justification::centredLeft, true);
@@ -71,6 +95,12 @@ void ModuleNodeComponent::paint(juce::Graphics& g)
 
 void ModuleNodeComponent::mouseDown(const juce::MouseEvent& e)
 {
+	if (e.mods.isLeftButtonDown())
+	{
+		if (onSelected)
+			onSelected(info_.id);
+	}
+
 	dragger_.startDraggingComponent(this, e);
 	toFront(true);
 }

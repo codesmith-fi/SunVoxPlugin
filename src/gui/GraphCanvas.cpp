@@ -43,7 +43,16 @@ void GraphCanvas::updateFromEngine(const std::vector<ModuleInfo>& modules)
 	for (const auto& info : modules)
 	{
 		auto node = std::make_unique<ModuleNodeComponent>(info);
-		node->onMoved = [this] { repaint(); };
+		node->setSelected(info.id == selectedModuleId_);
+		node->onSelected = [this](int modId) {
+			selectModule(modId);
+		};
+
+		node->onMoved = [this, n = node.get()] {
+			if (engine_ != nullptr)
+				engine_->setModuleXY(n->getModuleId(), n->getX(), n->getY());
+			repaint();
+		};
 
 		// Position resolution
 		juce::Point<int> pos;
@@ -53,8 +62,7 @@ void GraphCanvas::updateFromEngine(const std::vector<ModuleInfo>& modules)
 		}
 		else if (info.x != 0 || info.y != 0)
 		{
-			// Map SunVox coordinates if available
-			pos = { std::clamp(info.x, 20, 700), std::clamp(info.y, 20, 400) };
+			pos = { std::max(20, info.x), std::max(20, info.y) };
 		}
 		else
 		{
@@ -79,6 +87,119 @@ void GraphCanvas::updateFromEngine(const std::vector<ModuleInfo>& modules)
 	}
 
 	repaint();
+}
+
+void GraphCanvas::selectModule(int modId)
+{
+	selectedModuleId_ = modId;
+	for (auto& node : nodes_)
+	{
+		node->setSelected(node->getModuleId() == modId);
+	}
+
+	if (onModuleSelected)
+		onModuleSelected(modId);
+}
+
+void GraphCanvas::mouseDown(const juce::MouseEvent& e)
+{
+	if (e.mods.isLeftButtonDown())
+	{
+		selectModule(-1);
+	}
+}
+
+void GraphCanvas::mouseUp(const juce::MouseEvent& e)
+{
+	if (e.mods.isPopupMenu())
+	{
+		showContextMenu(e.getScreenPosition(), e.getPosition());
+	}
+}
+
+void GraphCanvas::showContextMenu(juce::Point<int> screenPos, juce::Point<int> canvasPos)
+{
+	enum MenuItemId
+	{
+		kSynthGenerator = 101,
+		kSynthAnalogGenerator,
+		kSynthFM,
+		kSynthSpectraVoice,
+
+		kEffectFilter = 201,
+		kEffectDelay,
+		kEffectReverb,
+		kEffectDistortion,
+		kEffectFlanger,
+		kEffectVocalFilter,
+
+		kToolAmplifier = 301,
+		kToolFeedback,
+		kToolKicker,
+		kToolCompressor
+	};
+
+	juce::PopupMenu menu;
+
+	juce::PopupMenu synthMenu;
+	synthMenu.addItem(kSynthGenerator, "Generator");
+	synthMenu.addItem(kSynthAnalogGenerator, "Analog Generator");
+	synthMenu.addItem(kSynthFM, "FM");
+	synthMenu.addItem(kSynthSpectraVoice, "SpectraVoice");
+	menu.addSubMenu("Synths", synthMenu);
+
+	juce::PopupMenu fxMenu;
+	fxMenu.addItem(kEffectFilter, "Filter");
+	fxMenu.addItem(kEffectDelay, "Delay");
+	fxMenu.addItem(kEffectReverb, "Reverb");
+	fxMenu.addItem(kEffectDistortion, "Distortion");
+	fxMenu.addItem(kEffectFlanger, "Flanger");
+	fxMenu.addItem(kEffectVocalFilter, "Vocal Filter");
+	menu.addSubMenu("Effects", fxMenu);
+
+	juce::PopupMenu toolMenu;
+	toolMenu.addItem(kToolAmplifier, "Amplifier");
+	toolMenu.addItem(kToolFeedback, "Feedback");
+	toolMenu.addItem(kToolKicker, "Kicker");
+	toolMenu.addItem(kToolCompressor, "Compressor");
+	menu.addSubMenu("Tools", toolMenu);
+
+	menu.showMenuAsync(juce::PopupMenu::Options().withTargetScreenArea(juce::Rectangle<int>(screenPos.x, screenPos.y, 1, 1)),
+		[this, canvasPos](int result) {
+			if (result == 0 || engine_ == nullptr)
+				return;
+
+			std::string type;
+			std::string name;
+
+			switch (result)
+			{
+			case kSynthGenerator: type = "Generator"; name = "Generator"; break;
+			case kSynthAnalogGenerator: type = "Analog Generator"; name = "Analog Gen"; break;
+			case kSynthFM: type = "FM"; name = "FM Synth"; break;
+			case kSynthSpectraVoice: type = "SpectraVoice"; name = "SpectraVoice"; break;
+
+			case kEffectFilter: type = "Filter"; name = "Filter"; break;
+			case kEffectDelay: type = "Delay"; name = "Delay"; break;
+			case kEffectReverb: type = "Reverb"; name = "Reverb"; break;
+			case kEffectDistortion: type = "Distortion"; name = "Distortion"; break;
+			case kEffectFlanger: type = "Flanger"; name = "Flanger"; break;
+			case kEffectVocalFilter: type = "Vocal Filter"; name = "Vocal Filter"; break;
+
+			case kToolAmplifier: type = "Amplifier"; name = "Amplifier"; break;
+			case kToolFeedback: type = "Feedback"; name = "Feedback"; break;
+			case kToolKicker: type = "Kicker"; name = "Kicker"; break;
+			case kToolCompressor: type = "Compressor"; name = "Compressor"; break;
+			default: return;
+			}
+
+			int newId = engine_->createModule(type, name, canvasPos.x, canvasPos.y);
+			if (newId >= 0)
+			{
+				refreshFromEngine();
+				selectModule(newId);
+			}
+		});
 }
 
 void GraphCanvas::drawCable(juce::Graphics& g, juce::Point<float> p0, juce::Point<float> p3)

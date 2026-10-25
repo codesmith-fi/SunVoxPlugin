@@ -39,6 +39,8 @@ target_sources(SunVoxPlugin
         src/gui/ModuleNodeComponent.cpp
         src/gui/GraphCanvas.hpp
         src/gui/GraphCanvas.cpp
+        src/gui/InspectorPanel.hpp
+        src/gui/InspectorPanel.cpp
 )
 
 target_include_directories(SunVoxPlugin
