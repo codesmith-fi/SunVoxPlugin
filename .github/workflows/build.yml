@@ -106,6 +106,7 @@ jobs:
         with:
           name: SunVoxPlugin-${{ steps.version.outputs.val }}-${{ matrix.platform }}
           path: SunVoxPlugin-${{ steps.version.outputs.val }}-${{ matrix.platform }}.zip
+          retention-days: 1
           if-no-files-found: error
 
       - name: Release to GitHub Releases
