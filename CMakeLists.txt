@@ -104,38 +104,49 @@ if(TARGET SunVoxPlugin_CLAP)
     )
 endif()
 
-# Copy sunvox.so next to the Standalone executable
+if(WIN32)
+    set(SUNVOX_LIB_FILE "${CMAKE_CURRENT_SOURCE_DIR}/sunvox_lib/sunvox_lib/windows/lib_x86_64/sunvox.dll")
+    set(SUNVOX_LIB_NAME "sunvox.dll")
+elseif(APPLE)
+    set(SUNVOX_LIB_FILE "${CMAKE_CURRENT_SOURCE_DIR}/sunvox_lib/sunvox_lib/macos/lib_x86_64/sunvox.dylib")
+    set(SUNVOX_LIB_NAME "sunvox.dylib")
+else()
+    set(SUNVOX_LIB_FILE "${CMAKE_CURRENT_SOURCE_DIR}/sunvox_lib/linux/x86_64/sunvox.so")
+    set(SUNVOX_LIB_NAME "sunvox.so")
+endif()
+
+# Copy sunvox library next to the Standalone executable
 if(TARGET SunVoxPlugin_Standalone)
     add_custom_command(TARGET SunVoxPlugin_Standalone POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "${CMAKE_CURRENT_SOURCE_DIR}/sunvox_lib/linux/x86_64/sunvox.so"
-            "$<TARGET_FILE_DIR:SunVoxPlugin_Standalone>/sunvox.so"
-        COMMENT "Copying sunvox.so next to Standalone executable"
+            "${SUNVOX_LIB_FILE}"
+            "$<TARGET_FILE_DIR:SunVoxPlugin_Standalone>/${SUNVOX_LIB_NAME}"
+        COMMENT "Copying ${SUNVOX_LIB_NAME} next to Standalone executable"
     )
 endif()
 
-# Copy sunvox.so and assets into VST3 bundle directory
+# Copy sunvox library and assets into VST3 bundle directory
 if(TARGET SunVoxPlugin_VST3)
     add_custom_command(TARGET SunVoxPlugin_VST3 POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "${CMAKE_CURRENT_SOURCE_DIR}/sunvox_lib/linux/x86_64/sunvox.so"
-            "$<TARGET_FILE_DIR:SunVoxPlugin_VST3>/sunvox.so"
+            "${SUNVOX_LIB_FILE}"
+            "$<TARGET_FILE_DIR:SunVoxPlugin_VST3>/${SUNVOX_LIB_NAME}"
         COMMAND ${CMAKE_COMMAND} -E make_directory
             "$<TARGET_FILE_DIR:SunVoxPlugin_VST3>/../Resources/assets"
         COMMAND ${CMAKE_COMMAND} -E copy_directory
             "${CMAKE_CURRENT_SOURCE_DIR}/assets"
             "$<TARGET_FILE_DIR:SunVoxPlugin_VST3>/../Resources/assets"
-        COMMENT "Copying sunvox.so and assets into VST3 bundle"
+        COMMENT "Copying ${SUNVOX_LIB_NAME} and assets into VST3 bundle"
     )
 endif()
 
-# Copy sunvox.so next to CLAP plugin
+# Copy sunvox library next to CLAP plugin
 if(TARGET SunVoxPlugin_CLAP)
     add_custom_command(TARGET SunVoxPlugin_CLAP POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "${CMAKE_CURRENT_SOURCE_DIR}/sunvox_lib/linux/x86_64/sunvox.so"
-            "$<TARGET_FILE_DIR:SunVoxPlugin_CLAP>/sunvox.so"
-        COMMENT "Copying sunvox.so next to CLAP plugin"
+            "${SUNVOX_LIB_FILE}"
+            "$<TARGET_FILE_DIR:SunVoxPlugin_CLAP>/${SUNVOX_LIB_NAME}"
+        COMMENT "Copying ${SUNVOX_LIB_NAME} next to CLAP plugin"
     )
 endif()
 

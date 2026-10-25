@@ -1,0 +1,95 @@
+name: CI Build & Package
+
+on:
+  push:
+    branches: [ "master", "main" ]
+  pull_request:
+    branches: [ "master", "main" ]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            name: Linux
+            build_type: Release
+            artifact_name: SunVoxPlugin-Linux-x86_64
+          - os: windows-latest
+            name: Windows
+            build_type: Release
+            artifact_name: SunVoxPlugin-Windows-x64
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Install Linux Dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libasound2-dev \
+            libjack-jackd2-dev \
+            libfreetype6-dev \
+            libx11-dev \
+            libxcomposite-dev \
+            libxcursor-dev \
+            libxinerama-dev \
+            libxrandr-dev \
+            libgl1-mesa-dev \
+            ninja-build
+
+      - name: Configure CMake (Linux)
+        if: runner.os == 'Linux'
+        run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+
+      - name: Configure CMake (Windows)
+        if: runner.os == 'Windows'
+        run: cmake -B build -G "Visual Studio 17 2022" -A x64 -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+
+      - name: Build All Targets
+        run: cmake --build build --config ${{ matrix.build_type }} --parallel
+
+      - name: Prepare Staging Directory (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          mkdir -p staging/VST3 staging/CLAP staging/Standalone staging/assets
+          cp -r build/SunVoxPlugin_artefacts/${{ matrix.build_type }}/VST3/SunVoxPlugin.vst3 staging/VST3/
+          cp build/SunVoxPlugin_artefacts/${{ matrix.build_type }}/CLAP/SunVoxPlugin.clap staging/CLAP/
+          cp build/SunVoxPlugin_artefacts/${{ matrix.build_type }}/CLAP/sunvox.so staging/CLAP/ || cp sunvox_lib/linux/x86_64/sunvox.so staging/CLAP/
+          cp build/SunVoxPlugin_artefacts/${{ matrix.build_type }}/Standalone/SunVoxPlugin staging/Standalone/
+          cp build/SunVoxPlugin_artefacts/${{ matrix.build_type }}/Standalone/sunvox.so staging/Standalone/ || cp sunvox_lib/linux/x86_64/sunvox.so staging/Standalone/
+          cp -r assets/* staging/assets/
+          cd staging && zip -r ../${{ matrix.artifact_name }}.zip .
+
+      - name: Prepare Staging Directory (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path staging/VST3, staging/CLAP, staging/Standalone, staging/assets
+          Copy-Item -Recurse -Force "build/SunVoxPlugin_artefacts/${{ matrix.build_type }}/VST3/SunVoxPlugin.vst3" "staging/VST3/"
+          Copy-Item -Force "build/SunVoxPlugin_artefacts/${{ matrix.build_type }}/CLAP/SunVoxPlugin.clap" "staging/CLAP/"
+          Copy-Item -Force "sunvox_lib/sunvox_lib/windows/lib_x86_64/sunvox.dll" "staging/CLAP/"
+          Copy-Item -Force "build/SunVoxPlugin_artefacts/${{ matrix.build_type }}/Standalone/SunVoxPlugin.exe" "staging/Standalone/"
+          Copy-Item -Force "sunvox_lib/sunvox_lib/windows/lib_x86_64/sunvox.dll" "staging/Standalone/"
+          Copy-Item -Recurse -Force "assets/*" "staging/assets/"
+          Compress-Archive -Path "staging/*" -DestinationPath "${{ matrix.artifact_name }}.zip" -Force
+
+      - name: Upload Release Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: ${{ matrix.artifact_name }}.zip
+          if-no-files-found: error
