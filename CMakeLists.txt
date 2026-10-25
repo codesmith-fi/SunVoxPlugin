@@ -31,10 +31,14 @@ target_sources(SunVoxPlugin
     PRIVATE
         src/audio/SunVoxEngine.hpp
         src/audio/SunVoxEngine.cpp
+        src/audio/PresetManager.hpp
+        src/audio/PresetManager.cpp
         src/audio/PluginProcessor.hpp
         src/audio/PluginProcessor.cpp
         src/gui/PluginEditor.hpp
         src/gui/PluginEditor.cpp
+        src/gui/PresetBrowserComponent.hpp
+        src/gui/PresetBrowserComponent.cpp
         src/gui/ModuleNodeComponent.hpp
         src/gui/ModuleNodeComponent.cpp
         src/gui/GraphCanvas.hpp

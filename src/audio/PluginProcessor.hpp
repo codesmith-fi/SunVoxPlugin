@@ -2,6 +2,7 @@
 
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "SunVoxEngine.hpp"
+#include "PresetManager.hpp"
 
 namespace sunvox
 {
@@ -42,6 +43,9 @@ public:
 	SunVoxEngine& getSunVoxEngine() noexcept { return sunVoxEngine_; }
 	const SunVoxEngine& getSunVoxEngine() const noexcept { return sunVoxEngine_; }
 
+	PresetManager& getPresetManager() noexcept { return presetManager_; }
+	const PresetManager& getPresetManager() const noexcept { return presetManager_; }
+
 	juce::MidiKeyboardState& getKeyboardState() noexcept { return keyboardState_; }
 	const juce::MidiKeyboardState& getKeyboardState() const noexcept { return keyboardState_; }
 
@@ -49,6 +53,7 @@ public:
 
 private:
 	SunVoxEngine sunVoxEngine_;
+	PresetManager presetManager_;
 	juce::MidiKeyboardState keyboardState_;
 
 	JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SunVoxAudioProcessor)

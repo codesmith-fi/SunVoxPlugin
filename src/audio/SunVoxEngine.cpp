@@ -131,6 +131,26 @@ bool SunVoxEngine::createDefaultSynth()
 	return defaultSynthModule_ >= 0;
 }
 
+void SunVoxEngine::clearNonOutputModules()
+{
+	if (!isInitialized_)
+		return;
+
+	sv_lock_slot(slot_);
+	int numModules = sv_get_number_of_modules(slot_);
+	for (int i = numModules - 1; i >= 1; --i)
+	{
+		uint32_t flags = sv_get_module_flags(slot_, i);
+		if ((flags & SV_MODULE_FLAG_EXISTS) != 0)
+		{
+			sv_remove_module(slot_, i);
+		}
+	}
+	defaultSynthModule_ = -1;
+	activeMidiModule_ = -1;
+	sv_unlock_slot(slot_);
+}
+
 bool SunVoxEngine::loadProject(const std::string& filePath)
 {
 	if (!isInitialized_)

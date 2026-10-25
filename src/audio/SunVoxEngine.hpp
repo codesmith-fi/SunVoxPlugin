@@ -61,6 +61,8 @@ public:
 	bool loadFromMemory(const void* data, size_t size);
 
 	bool createDefaultSynth();
+	void clearNonOutputModules();
+	void setDefaultSynthModule(int modId) noexcept { defaultSynthModule_ = modId; }
 	std::vector<ModuleInfo> getActiveModules();
 
 	int createModule(const std::string& type, const std::string& name, int x, int y);

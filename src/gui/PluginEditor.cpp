@@ -9,6 +9,7 @@ SunVoxAudioProcessorEditor::SunVoxAudioProcessorEditor(SunVoxAudioProcessor& own
 	  processor_(owner),
 	  graphCanvas_(&processor_.getSunVoxEngine()),
 	  inspectorPanel_(&processor_.getSunVoxEngine()),
+	  presetBrowser_(processor_.getPresetManager(), processor_.getSunVoxEngine()),
 	  keyboardComponent_(processor_.getKeyboardState(), juce::MidiKeyboardComponent::horizontalKeyboard)
 {
 	setSize(1280, 720);
@@ -34,6 +35,18 @@ SunVoxAudioProcessorEditor::SunVoxAudioProcessorEditor(SunVoxAudioProcessor& own
 		inspectorPanel_.inspectModule(modId);
 	};
 
+	// Preset Browser drawer
+	addChildComponent(presetBrowser_);
+	presetBrowser_.onPresetLoaded = [this] {
+		refreshUI();
+	};
+	presetBrowser_.onCloseClicked = [this] {
+		isBrowserOpen_ = false;
+		presetBrowser_.setVisible(false);
+		resized();
+		repaint();
+	};
+
 	// Header buttons: Load and Save
 	loadButton_.setColour(juce::TextButton::buttonColourId, juce::Colour(0xff2b323d));
 	loadButton_.setColour(juce::TextButton::textColourOffId, juce::Colour(0xffe5e9f0));
@@ -44,6 +57,44 @@ SunVoxAudioProcessorEditor::SunVoxAudioProcessorEditor(SunVoxAudioProcessor& own
 	saveButton_.setColour(juce::TextButton::textColourOffId, juce::Colour(0xffe5e9f0));
 	saveButton_.onClick = [this] { handleSaveClicked(); };
 	addAndMakeVisible(saveButton_);
+
+	// Header controls: Preset Browser toggle & quick audition
+	presetsToggleBtn_.setColour(juce::TextButton::buttonColourId, juce::Colour(0xff2b323d));
+	presetsToggleBtn_.setColour(juce::TextButton::textColourOffId, juce::Colour(0xff00e5ff));
+	presetsToggleBtn_.onClick = [this] {
+		isBrowserOpen_ = !isBrowserOpen_;
+		presetBrowser_.setVisible(isBrowserOpen_);
+		resized();
+		repaint();
+	};
+	addAndMakeVisible(presetsToggleBtn_);
+
+	prevPresetBtn_.setColour(juce::TextButton::buttonColourId, juce::Colour(0xff2b323d));
+	prevPresetBtn_.setColour(juce::TextButton::textColourOffId, juce::Colour(0xffe5e9f0));
+	prevPresetBtn_.onClick = [this] {
+		if (processor_.getPresetManager().prevPreset(processor_.getSunVoxEngine()))
+			refreshUI();
+	};
+	addAndMakeVisible(prevPresetBtn_);
+
+	nextPresetBtn_.setColour(juce::TextButton::buttonColourId, juce::Colour(0xff2b323d));
+	nextPresetBtn_.setColour(juce::TextButton::textColourOffId, juce::Colour(0xffe5e9f0));
+	nextPresetBtn_.onClick = [this] {
+		if (processor_.getPresetManager().nextPreset(processor_.getSunVoxEngine()))
+			refreshUI();
+	};
+	addAndMakeVisible(nextPresetBtn_);
+
+	currentPresetBtn_.setColour(juce::TextButton::buttonColourId, juce::Colour(0xff181a1f));
+	currentPresetBtn_.setColour(juce::TextButton::textColourOffId, juce::Colour(0xff00e5ff));
+	currentPresetBtn_.onClick = [this] {
+		isBrowserOpen_ = !isBrowserOpen_;
+		presetBrowser_.setVisible(isBrowserOpen_);
+		resized();
+		repaint();
+	};
+	addAndMakeVisible(currentPresetBtn_);
+	updatePresetDisplay();
 
 	// Listen for DAW state restoration
 	processor_.onStateChanged = [this] {
@@ -82,7 +133,15 @@ void SunVoxAudioProcessorEditor::refreshUI()
 	{
 		inspectorPanel_.clearInspection();
 	}
+	updatePresetDisplay();
+	presetBrowser_.refreshBrowser();
 	repaint();
+}
+
+void SunVoxAudioProcessorEditor::updatePresetDisplay()
+{
+	currentPresetBtn_.setButtonText(processor_.getPresetManager().getCurrentPresetDisplayName());
+	presetsToggleBtn_.setColour(juce::TextButton::buttonColourId, isBrowserOpen_ ? juce::Colour(0xff005b66) : juce::Colour(0xff2b323d));
 }
 
 void SunVoxAudioProcessorEditor::handleLoadClicked()
@@ -165,8 +224,8 @@ void SunVoxAudioProcessorEditor::paint(juce::Graphics& g)
 
 	// Title
 	g.setColour(juce::Colours::white);
-	g.setFont(juce::FontOptions(18.0f, juce::Font::bold));
-	g.drawText("SUNVOX MODULAR SYNTH", headerArea.removeFromLeft(260).reduced(16, 0), juce::Justification::centredLeft);
+	g.setFont(juce::FontOptions(17.0f, juce::Font::bold));
+	g.drawText("SUNVOX MODULAR SYNTH", headerArea.removeFromLeft(230).reduced(12, 0), juce::Justification::centredLeft);
 
 	// Status badge
 	const auto& engine = processor_.getSunVoxEngine();
@@ -196,15 +255,28 @@ void SunVoxAudioProcessorEditor::resized()
 	auto bounds = getLocalBounds();
 	auto headerArea = bounds.removeFromTop(54); // header
 
-	// Position Load and Save buttons in header
-	loadButton_.setBounds(268, 13, 64, 28);
-	saveButton_.setBounds(340, 13, 64, 28);
+	// Position Header controls
+	loadButton_.setBounds(240, 13, 56, 28);
+	saveButton_.setBounds(302, 13, 56, 28);
+
+	presetsToggleBtn_.setBounds(372, 13, 70, 28);
+	prevPresetBtn_.setBounds(448, 13, 26, 28);
+	currentPresetBtn_.setBounds(478, 13, 220, 28);
+	nextPresetBtn_.setBounds(702, 13, 26, 28);
 
 	auto keyboardArea = bounds.removeFromBottom(84).reduced(16, 4);
 	keyboardComponent_.setBounds(keyboardArea);
 
 	bounds.removeFromBottom(6); // gap above keyboard
 	auto contentArea = bounds.reduced(16, 8);
+
+	// Drawer if open
+	if (isBrowserOpen_)
+	{
+		const int browserWidth = 320;
+		presetBrowser_.setBounds(contentArea.removeFromLeft(browserWidth));
+		contentArea.removeFromLeft(10);
+	}
 
 	// Inspector panel takes 240px on the right
 	const int inspectorWidth = 240;
