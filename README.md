@@ -70,6 +70,7 @@ The repository includes a curated selection of instruments located in assets/ins
 ### Credits & Acknowledgments
 Alexander Zolotov (NightRadio / WarmPlace): Creator of the incredible SunVox and sunvox_lib.
 JUCE Framework: GUI rendering, audio buffer pipelines, and cross-platform plugin wrappers.
+CLAP/VST implementation by Erno Pakarinen (Alias Codesmith, Alias Signal Sanctum), contact: sanctumsignal@gmail.com
 
 ### License
 SunVoxPlugin source code is licensed under the MIT License.
