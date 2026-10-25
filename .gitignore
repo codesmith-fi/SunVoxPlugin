@@ -1,4 +1,7 @@
 build/
+_deps/
+.cache/
+*.user
 build-release/
 compile_commands.json
 cmake_install.cmake
