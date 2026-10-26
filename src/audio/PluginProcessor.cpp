@@ -31,11 +31,7 @@ void SunVoxAudioProcessor::releaseResources()
 
 bool SunVoxAudioProcessor::isBusesLayoutSupported(const BusesLayout& layouts) const
 {
-	if (layouts.getMainInputChannelSet() != juce::AudioChannelSet::disabled())
-		return false;
-
-	if (layouts.getMainOutputChannelSet() != juce::AudioChannelSet::mono()
-	 && layouts.getMainOutputChannelSet() != juce::AudioChannelSet::stereo())
+	if (layouts.getMainOutputChannelSet() != juce::AudioChannelSet::stereo())
 		return false;
 
 	return true;

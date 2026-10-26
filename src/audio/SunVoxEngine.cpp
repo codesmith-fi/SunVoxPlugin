@@ -136,7 +136,8 @@ bool SunVoxEngine::init(int sampleRate)
 	sampleRate_ = sampleRate > 0 ? sampleRate : 44100;
 
 	uint32_t flags = SV_INIT_FLAG_USER_AUDIO_CALLBACK |
-	                 SV_INIT_FLAG_AUDIO_FLOAT32;
+	                 SV_INIT_FLAG_AUDIO_FLOAT32 |
+	                 SV_INIT_FLAG_ONE_THREAD;
 
 	int res = sv_init(nullptr, sampleRate_, 2, flags);
 	if (res < 0)

@@ -31,10 +31,87 @@ include(FetchContent)
 FetchContent_Declare(
     JUCE
     GIT_REPOSITORY https://github.com/juce-framework/JUCE.git
-    GIT_TAG 8.0.6
+    GIT_TAG 8.0.15
     GIT_SHALLOW TRUE
 )
-FetchContent_MakeAvailable(JUCE)
+FetchContent_GetProperties(JUCE)
+if (NOT juce_POPULATED)
+    FetchContent_Populate(JUCE)
+    if (WIN32 AND ENABLE_WINE_FIXES)
+        message(STATUS "SunVoxPlugin: Applying Wine compatibility patches to JUCE...")
+        set(_JUCE_WIN_FILE "${juce_SOURCE_DIR}/modules/juce_gui_basics/native/juce_Windowing_windows.cpp")
+        if (EXISTS "${_JUCE_WIN_FILE}")
+            file(READ "${_JUCE_WIN_FILE}" _JUCE_WIN_CONTENT)
+            string(REPLACE "const auto renderer = juce_isRunningInWine() ? 0 : 1;"
+                           "const auto renderer = 0;"
+                           _JUCE_WIN_CONTENT_PATCHED "${_JUCE_WIN_CONTENT}")
+            string(REPLACE "contextDescriptorList<GDIRenderContext, D2DRenderContext>"
+                           "contextDescriptorList<GDIRenderContext, GDIRenderContext>"
+                           _JUCE_WIN_CONTENT_PATCHED "${_JUCE_WIN_CONTENT_PATCHED}")
+            string(REPLACE "void updateCurrentMonitorAndRefreshVBlankDispatcher (ForceRefreshDispatcher force = ForceRefreshDispatcher::no)"
+                           "void updateCurrentMonitorAndRefreshVBlankDispatcher (ForceRefreshDispatcher force = ForceRefreshDispatcher::no) { ignoreUnused (force); return; } void unused_updateCurrentMonitorAndRefreshVBlankDispatcher (ForceRefreshDispatcher force = ForceRefreshDispatcher::no)"
+                           _JUCE_WIN_CONTENT_PATCHED "${_JUCE_WIN_CONTENT_PATCHED}")
+            string(REPLACE "VBlankDispatcher::getInstance()->removeListener (*this);"
+                           "/* VBlankDispatcher removeListener disabled */"
+                           _JUCE_WIN_CONTENT_PATCHED "${_JUCE_WIN_CONTENT_PATCHED}")
+            string(REPLACE "auto* dispatcher = VBlankDispatcher::getInstance();"
+                           "/* auto* dispatcher = nullptr; */"
+                           _JUCE_WIN_CONTENT_PATCHED "${_JUCE_WIN_CONTENT_PATCHED}")
+            string(REPLACE "dispatcher->reconfigureDisplays();"
+                           "/* dispatcher->reconfigureDisplays(); */"
+                           _JUCE_WIN_CONTENT_PATCHED "${_JUCE_WIN_CONTENT_PATCHED}")
+            string(REPLACE "std::optional<TimedCallback> monitorUpdateTimer;"
+                           "std::optional<TimedCallback> monitorUpdateTimer; std::optional<TimedCallback> vblankFallbackTimer;"
+                           _JUCE_WIN_CONTENT_PATCHED "${_JUCE_WIN_CONTENT_PATCHED}")
+            string(REPLACE "setCurrentRenderingEngine (engine);"
+                           "setCurrentRenderingEngine (engine); vblankFallbackTimer.emplace ([this] { onVBlank (Time::getMillisecondCounterHiRes() * 0.001); }); vblankFallbackTimer->startTimerHz (60);"
+                           _JUCE_WIN_CONTENT_PATCHED "${_JUCE_WIN_CONTENT_PATCHED}")
+            string(REPLACE "suspendResumeRegistration = {};"
+                           "vblankFallbackTimer.reset(); suspendResumeRegistration = {};"
+                           _JUCE_WIN_CONTENT_PATCHED "${_JUCE_WIN_CONTENT_PATCHED}")
+            string(REPLACE "void blitToDC (HDC dc, int x, int y) const noexcept"
+                           "void blitToDC (HDC dc, int x, int y) const noexcept { SetMapMode (dc, MM_TEXT); GdiFlush(); if (! BitBlt (dc, x, y, width, height, hdc, 0, 0, SRCCOPY)) StretchDIBits (dc, x, y, width, height, 0, 0, width, height, bitmapData, (const BITMAPINFO*) &bitmapInfo, DIB_RGB_COLORS, SRCCOPY); } void unused_blitToDC (HDC dc, int x, int y) const noexcept"
+                           _JUCE_WIN_CONTENT_PATCHED "${_JUCE_WIN_CONTENT_PATCHED}")
+            string(REPLACE "void handleShowWindow() override {}"
+                           "void handleShowWindow() override { peer.getComponent().repaint(); }"
+                           _JUCE_WIN_CONTENT_PATCHED "${_JUCE_WIN_CONTENT_PATCHED}")
+            file(WRITE "${_JUCE_WIN_FILE}" "${_JUCE_WIN_CONTENT_PATCHED}")
+            message(STATUS "SunVoxPlugin: Patched juce_Windowing_windows.cpp (forced GDIRenderContext, 60Hz fallback timer, BitBlt rendering)")
+        endif()
+        set(_JUCE_VBLANK_FILE "${juce_SOURCE_DIR}/modules/juce_gui_basics/native/juce_VBlank_windows.cpp")
+        if (EXISTS "${_JUCE_VBLANK_FILE}")
+            file(READ "${_JUCE_VBLANK_FILE}" _JUCE_VBLANK_CONTENT)
+            string(REPLACE "void updateDisplay (ComponentPeer::VBlankListener& listener, HMONITOR monitor)"
+                           "void updateDisplay (ComponentPeer::VBlankListener& listener, HMONITOR monitor) { ignoreUnused (listener, monitor); return; } void unused_updateDisplay (ComponentPeer::VBlankListener& listener, HMONITOR monitor)"
+                           _JUCE_VBLANK_CONTENT_PATCHED "${_JUCE_VBLANK_CONTENT}")
+            string(REPLACE "void reconfigureDisplays()"
+                           "void reconfigureDisplays() { return; } void unused_reconfigureDisplays()"
+                           _JUCE_VBLANK_CONTENT_PATCHED "${_JUCE_VBLANK_CONTENT_PATCHED}")
+            file(WRITE "${_JUCE_VBLANK_FILE}" "${_JUCE_VBLANK_CONTENT_PATCHED}")
+            message(STATUS "SunVoxPlugin: Patched juce_VBlank_windows.cpp (disabled VBlankDispatcher)")
+        endif()
+        set(_JUCE_DWRITE_FILE "${juce_SOURCE_DIR}/modules/juce_graphics/native/juce_DirectWriteTypeface_windows.cpp")
+        if (EXISTS "${_JUCE_DWRITE_FILE}")
+            file(READ "${_JUCE_DWRITE_FILE}" _JUCE_DWRITE_CONTENT)
+            string(REPLACE "auto factory = factories->getDWriteFactory().getInterface<IDWriteFactory2>();"
+                           "ignoreUnused (c, language); return {}; auto factory = factories->getDWriteFactory().getInterface<IDWriteFactory2>();"
+                           _JUCE_DWRITE_CONTENT_PATCHED "${_JUCE_DWRITE_CONTENT}")
+            file(WRITE "${_JUCE_DWRITE_FILE}" "${_JUCE_DWRITE_CONTENT_PATCHED}")
+            message(STATUS "SunVoxPlugin: Patched juce_DirectWriteTypeface_windows.cpp (disabled DirectWrite system font fallback for Wine)")
+        endif()
+    else()
+        find_package(Git QUIET)
+        if (Git_FOUND AND EXISTS "${juce_SOURCE_DIR}/.git")
+            execute_process(
+                COMMAND ${GIT_EXECUTABLE} checkout -f -- modules/juce_gui_basics modules/juce_graphics
+                WORKING_DIRECTORY "${juce_SOURCE_DIR}"
+                OUTPUT_QUIET
+                ERROR_QUIET
+            )
+        endif()
+    endif()
+    add_subdirectory(${juce_SOURCE_DIR} ${juce_BINARY_DIR})
+endif()
 
 # CLAP support via clap-juce-extensions
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/libs/clap-juce-extensions/CMakeLists.txt")
@@ -108,6 +185,7 @@ target_compile_definitions(SunVoxPlugin
     PUBLIC
         JUCE_WEB_BROWSER=0
         JUCE_USE_CURL=0
+        JUCE_VST3_CAN_REPLACE_VST2=0
 )
 
 juce_generate_juce_header(SunVoxPlugin)
