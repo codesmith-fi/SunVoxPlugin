@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(SunVoxPlugin VERSION 0.1.7 LANGUAGES C CXX)
+project(SunVoxPlugin VERSION 0.1.8 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -120,7 +120,7 @@ endif()
 
 juce_add_plugin(SunVoxPlugin
     COMPANY_NAME "WarmPlace"
-    VERSION "0.1.7"
+    VERSION "0.1.8"
     PLUGIN_MANUFACTURER_CODE WrPl
     PLUGIN_CODE SvPl
     FORMATS Standalone VST3
