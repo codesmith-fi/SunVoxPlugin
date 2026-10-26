@@ -168,6 +168,7 @@ bool SunVoxEngine::init(int sampleRate)
 	sv_pause(slot_); // Keep paused so it won't bleed into other instances until rendered
 	sv_volume(slot_, 256);
 
+	resetVoiceTracks();
 	globalInstanceCount_++;
 	isInitialized_ = true;
 
@@ -183,6 +184,7 @@ bool SunVoxEngine::createDefaultSynth()
 	if (!isInitialized_ || slot_ < 0)
 		return false;
 
+	resetVoiceTracks();
 	sv_lock_slot(slot_);
 	defaultSynthModule_ = sv_new_module(slot_, "Generator", "Default Lead", 0, 0, 0);
 	if (defaultSynthModule_ >= 0)
@@ -207,6 +209,7 @@ void SunVoxEngine::clearNonOutputModules()
 	if (!isInitialized_ || slot_ < 0)
 		return;
 
+	resetVoiceTracks();
 	sv_lock_slot(slot_);
 	int numModules = sv_get_number_of_modules(slot_);
 	for (int i = numModules - 1; i >= 1; --i)
@@ -227,6 +230,7 @@ bool SunVoxEngine::loadProject(const std::string& filePath)
 	if (!isInitialized_ || slot_ < 0)
 		return false;
 
+	resetVoiceTracks();
 	sv_lock_slot(slot_);
 	int res = sv_load(slot_, filePath.c_str());
 	sv_unlock_slot(slot_);
@@ -288,6 +292,7 @@ bool SunVoxEngine::loadFromMemory(const void* data, size_t size)
 	if (!isInitialized_ || slot_ < 0 || data == nullptr || size == 0)
 		return false;
 
+	resetVoiceTracks();
 	sv_lock_slot(slot_);
 	int res = sv_load_from_memory(slot_, const_cast<void*>(data), static_cast<uint32_t>(size));
 	sv_unlock_slot(slot_);
@@ -394,6 +399,7 @@ void SunVoxEngine::close()
 	std::lock_guard<std::recursive_mutex> lock(engineMutex_);
 	if (isInitialized_ && slot_ >= 0)
 	{
+		resetVoiceTracks();
 		sv_stop(slot_);
 		sv_close_slot(slot_);
 		SlotManager::releaseSlot(slot_);
@@ -450,6 +456,75 @@ void SunVoxEngine::renderAudio(float* leftOutput, float* rightOutput, int numFra
 	}
 }
 
+int SunVoxEngine::allocateVoiceTrack(int midiNote)
+{
+	std::lock_guard<std::mutex> lock(voiceMutex_);
+
+	// 1. If note is already active on a track, reuse it (re-trigger)
+	for (size_t i = 0; i < MAX_POLYPHONY_TRACKS; ++i)
+	{
+		if (voiceTracks_[i].active && voiceTracks_[i].midiNote == midiNote)
+		{
+			voiceTracks_[i].timestamp = ++voiceAllocationCounter_;
+			return static_cast<int>(i);
+		}
+	}
+
+	// 2. Find first inactive track
+	for (size_t i = 0; i < MAX_POLYPHONY_TRACKS; ++i)
+	{
+		if (!voiceTracks_[i].active)
+		{
+			voiceTracks_[i].active = true;
+			voiceTracks_[i].midiNote = midiNote;
+			voiceTracks_[i].timestamp = ++voiceAllocationCounter_;
+			return static_cast<int>(i);
+		}
+	}
+
+	// 3. Voice stealing: steal the oldest active voice
+	size_t oldestIndex = 0;
+	uint32_t oldestTimestamp = voiceTracks_[0].timestamp;
+	for (size_t i = 1; i < MAX_POLYPHONY_TRACKS; ++i)
+	{
+		if (voiceTracks_[i].timestamp < oldestTimestamp)
+		{
+			oldestTimestamp = voiceTracks_[i].timestamp;
+			oldestIndex = i;
+		}
+	}
+
+	voiceTracks_[oldestIndex].active = true;
+	voiceTracks_[oldestIndex].midiNote = midiNote;
+	voiceTracks_[oldestIndex].timestamp = ++voiceAllocationCounter_;
+	return static_cast<int>(oldestIndex);
+}
+
+int SunVoxEngine::findVoiceTrack(int midiNote) const
+{
+	std::lock_guard<std::mutex> lock(voiceMutex_);
+	for (size_t i = 0; i < MAX_POLYPHONY_TRACKS; ++i)
+	{
+		if (voiceTracks_[i].active && voiceTracks_[i].midiNote == midiNote)
+		{
+			return static_cast<int>(i);
+		}
+	}
+	return -1;
+}
+
+void SunVoxEngine::resetVoiceTracks()
+{
+	std::lock_guard<std::mutex> lock(voiceMutex_);
+	for (auto& track : voiceTracks_)
+	{
+		track.active = false;
+		track.midiNote = -1;
+		track.timestamp = 0;
+	}
+	voiceAllocationCounter_ = 0;
+}
+
 void SunVoxEngine::sendMidiNote(int note, int velocity, int track)
 {
 	int targetMod = targetMidiModuleId_.load();
@@ -457,11 +532,24 @@ void SunVoxEngine::sendMidiNote(int note, int velocity, int track)
 	if (!isInitialized_ || slot_ < 0 || targetMod < 0)
 		return;
 
+	int effectiveTrack = track;
+	if (effectiveTrack < 0)
+	{
+		effectiveTrack = allocateVoiceTrack(note);
+	}
+	else if (static_cast<size_t>(effectiveTrack) < MAX_POLYPHONY_TRACKS)
+	{
+		std::lock_guard<std::mutex> lock(voiceMutex_);
+		voiceTracks_[static_cast<size_t>(effectiveTrack)].active = true;
+		voiceTracks_[static_cast<size_t>(effectiveTrack)].midiNote = note;
+		voiceTracks_[static_cast<size_t>(effectiveTrack)].timestamp = ++voiceAllocationCounter_;
+	}
+
 	int svNote = std::clamp(note + 1, 1, 127);
 	int svVel = (velocity > 0) ? std::clamp(velocity, 1, 129) : 129;
 	int targetModule = targetMod + 1;
 
-	sv_send_event(slot_, track, svNote, svVel, targetModule, 0, 0);
+	sv_send_event(slot_, effectiveTrack, svNote, svVel, targetModule, 0, 0);
 }
 
 void SunVoxEngine::sendMidiNoteOff(int track)
@@ -471,8 +559,24 @@ void SunVoxEngine::sendMidiNoteOff(int track)
 	if (!isInitialized_ || slot_ < 0 || targetMod < 0)
 		return;
 
+	if (track >= 0 && static_cast<size_t>(track) < MAX_POLYPHONY_TRACKS)
+	{
+		std::lock_guard<std::mutex> lock(voiceMutex_);
+		voiceTracks_[static_cast<size_t>(track)].active = false;
+		voiceTracks_[static_cast<size_t>(track)].midiNote = -1;
+	}
+
 	int targetModule = targetMod + 1;
 	sv_send_event(slot_, track, NOTECMD_NOTE_OFF, 0, targetModule, 0, 0);
+}
+
+void SunVoxEngine::sendMidiNoteOffForNote(int noteNumber)
+{
+	int track = findVoiceTrack(noteNumber);
+	if (track >= 0)
+	{
+		sendMidiNoteOff(track);
+	}
 }
 
 void SunVoxEngine::sendMidiNoteOff(int track, int noteNumber)
@@ -492,7 +596,20 @@ void SunVoxEngine::sendAllNotesOff()
 	if (!isInitialized_ || slot_ < 0)
 		return;
 
+	int targetMod = targetMidiModuleId_.load();
+	if (targetMod < 0) targetMod = defaultSynthModule_;
+	int targetModule = (targetMod >= 0) ? (targetMod + 1) : 0;
+
 	sv_send_event(slot_, 0, NOTECMD_ALL_NOTES_OFF, 0, 0, 0, 0);
+
+	std::lock_guard<std::mutex> lock(voiceMutex_);
+	for (int t = 0; t < MAX_POLYPHONY_TRACKS; ++t)
+	{
+		sv_send_event(slot_, t, NOTECMD_NOTE_OFF, 0, targetModule, 0, 0);
+		voiceTracks_[static_cast<size_t>(t)].active = false;
+		voiceTracks_[static_cast<size_t>(t)].midiNote = -1;
+	}
+	voiceAllocationCounter_ = 0;
 }
 
 void SunVoxEngine::sendPitchBend(int track, int pitchVal)
@@ -503,7 +620,17 @@ void SunVoxEngine::sendPitchBend(int track, int pitchVal)
 		return;
 
 	int targetModule = targetMod + 1;
-	sv_send_event(slot_, track, NOTECMD_SET_PITCH, 0, targetModule, 0, pitchVal);
+	if (track >= 0)
+	{
+		sv_send_event(slot_, track, NOTECMD_SET_PITCH, 0, targetModule, 0, pitchVal);
+	}
+	else
+	{
+		for (int t = 0; t < MAX_POLYPHONY_TRACKS; ++t)
+		{
+			sv_send_event(slot_, t, NOTECMD_SET_PITCH, 0, targetModule, 0, pitchVal);
+		}
+	}
 }
 
 std::vector<ModuleInfo> SunVoxEngine::getActiveModules()

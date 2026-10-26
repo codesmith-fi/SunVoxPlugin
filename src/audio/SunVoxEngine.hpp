@@ -79,6 +79,15 @@ struct ControllerInfo
 	int type{0};
 };
 
+struct VoiceTrack
+{
+	int midiNote{-1};
+	bool active{false};
+	uint32_t timestamp{0};
+};
+
+static constexpr int MAX_POLYPHONY_TRACKS = 16;
+
 class SunVoxEngine
 {
 public:
@@ -92,12 +101,18 @@ public:
 
 	void renderAudio(float* leftOutput, float* rightOutput, int numFrames);
 
-	void sendMidiNote(int note, int velocity, int track = 0);
+	void sendMidiNote(int note, int velocity, int track = -1);
 	void sendMidiNoteOff(int track = 0);
+	void sendMidiNoteOffForNote(int noteNumber);
 	void sendMidiNoteOn(int track, int noteNumber, float velocity);
 	void sendMidiNoteOff(int track, int noteNumber);
 	void sendAllNotesOff();
 	void sendPitchBend(int track, int pitchVal);
+
+	int allocateVoiceTrack(int midiNote);
+	int findVoiceTrack(int midiNote) const;
+	void resetVoiceTracks();
+	const std::array<VoiceTrack, MAX_POLYPHONY_TRACKS>& getVoiceTracks() const noexcept { return voiceTracks_; }
 
 	bool isInitialized() const noexcept { return isInitialized_; }
 	bool isLibraryLoaded() const noexcept { return isLibraryLoaded_; }
@@ -145,6 +160,10 @@ private:
 	std::atomic<int> targetMidiModuleId_{-1};
 	std::vector<float> interleavedBuffer_;
 	mutable std::recursive_mutex engineMutex_;
+
+	std::array<VoiceTrack, MAX_POLYPHONY_TRACKS> voiceTracks_{};
+	uint32_t voiceAllocationCounter_{0};
+	mutable std::mutex voiceMutex_;
 
 	static inline std::mutex globalInitMutex_;
 	static inline std::mutex globalAudioMutex_;

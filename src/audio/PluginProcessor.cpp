@@ -48,15 +48,14 @@ void SunVoxAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
 	for (const auto metadata : midiMessages)
 	{
 		const auto message = metadata.getMessage();
-		const int channelTrack = std::clamp(message.getChannel() - 1, 0, 15);
 
 		if (message.isNoteOn())
 		{
-			sunVoxEngine_.sendMidiNote(message.getNoteNumber(), message.getVelocity(), channelTrack);
+			sunVoxEngine_.sendMidiNote(message.getNoteNumber(), message.getVelocity());
 		}
 		else if (message.isNoteOff())
 		{
-			sunVoxEngine_.sendMidiNoteOff(channelTrack);
+			sunVoxEngine_.sendMidiNoteOffForNote(message.getNoteNumber());
 		}
 		else if (message.isAllNotesOff())
 		{
@@ -64,7 +63,7 @@ void SunVoxAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
 		}
 		else if (message.isPitchWheel())
 		{
-			sunVoxEngine_.sendPitchBend(channelTrack, message.getPitchWheelValue());
+			sunVoxEngine_.sendPitchBend(-1, message.getPitchWheelValue());
 		}
 	}
 
