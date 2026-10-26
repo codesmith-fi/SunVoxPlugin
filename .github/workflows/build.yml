@@ -61,7 +61,7 @@ jobs:
           mkdir -p build/_deps
           git clone --depth 1 --branch 8.0.6 https://github.com/juce-framework/JUCE.git build/_deps/juce-src
           cd build/_deps/juce-src
-          git apply ../../../patches/juce8_wine_compatibility.patch
+          git apply --ignore-whitespace ../../../patches/juce8_wine_compatibility.patch
 
       - name: Install Linux Dependencies
         if: runner.os == 'Linux'

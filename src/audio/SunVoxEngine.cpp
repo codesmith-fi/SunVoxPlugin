@@ -122,6 +122,11 @@ bool SunVoxEngine::loadLibrary(const std::string& libraryPath)
 
 bool SunVoxEngine::init(int sampleRate)
 {
+	std::lock_guard<std::recursive_mutex> lock(engineMutex_);
+
+	if (isInitialized_ && sampleRate_ == sampleRate)
+		return true;
+
 	if (isInitialized_)
 		close();
 
@@ -131,8 +136,7 @@ bool SunVoxEngine::init(int sampleRate)
 	sampleRate_ = sampleRate > 0 ? sampleRate : 44100;
 
 	uint32_t flags = SV_INIT_FLAG_USER_AUDIO_CALLBACK |
-	                 SV_INIT_FLAG_AUDIO_FLOAT32 |
-	                 SV_INIT_FLAG_ONE_THREAD;
+	                 SV_INIT_FLAG_AUDIO_FLOAT32;
 
 	int res = sv_init(nullptr, sampleRate_, 2, flags);
 	if (res < 0)
@@ -289,6 +293,7 @@ void SunVoxEngine::updateDefaultModuleAfterLoad()
 
 void SunVoxEngine::close()
 {
+	std::lock_guard<std::recursive_mutex> lock(engineMutex_);
 	if (isInitialized_)
 	{
 		sv_stop(slot_);
@@ -306,6 +311,7 @@ void SunVoxEngine::close()
 
 void SunVoxEngine::renderAudio(float* leftOutput, float* rightOutput, int numFrames)
 {
+	std::lock_guard<std::recursive_mutex> lock(engineMutex_);
 	if (!isInitialized_ || numFrames <= 0)
 	{
 		std::fill_n(leftOutput, numFrames, 0.0f);

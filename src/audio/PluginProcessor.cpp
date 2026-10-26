@@ -6,9 +6,9 @@ namespace sunvox
 
 SunVoxAudioProcessor::SunVoxAudioProcessor()
 	: AudioProcessor(BusesProperties()
-	                     .withInput("Input", juce::AudioChannelSet::stereo(), false)
 	                     .withOutput("Output", juce::AudioChannelSet::stereo(), true))
 {
+	sunVoxEngine_.init(44100);
 }
 
 SunVoxAudioProcessor::~SunVoxAudioProcessor()
@@ -18,7 +18,10 @@ SunVoxAudioProcessor::~SunVoxAudioProcessor()
 void SunVoxAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
 {
 	juce::ignoreUnused(samplesPerBlock);
-	sunVoxEngine_.init(static_cast<int>(sampleRate));
+	if (!sunVoxEngine_.isInitialized() || sunVoxEngine_.getSampleRate() != static_cast<int>(sampleRate))
+	{
+		sunVoxEngine_.init(static_cast<int>(sampleRate));
+	}
 }
 
 void SunVoxAudioProcessor::releaseResources()
@@ -28,6 +31,9 @@ void SunVoxAudioProcessor::releaseResources()
 
 bool SunVoxAudioProcessor::isBusesLayoutSupported(const BusesLayout& layouts) const
 {
+	if (layouts.getMainInputChannelSet() != juce::AudioChannelSet::disabled())
+		return false;
+
 	if (layouts.getMainOutputChannelSet() != juce::AudioChannelSet::mono()
 	 && layouts.getMainOutputChannelSet() != juce::AudioChannelSet::stereo())
 		return false;
@@ -39,18 +45,14 @@ void SunVoxAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
 {
 	juce::ScopedNoDenormals noDenormals;
 
-	auto totalNumInputChannels = getTotalNumInputChannels();
-	auto totalNumOutputChannels = getTotalNumOutputChannels();
-
-	for (auto i = totalNumInputChannels; i < totalNumOutputChannels; ++i)
-		buffer.clear(i, 0, buffer.getNumSamples());
+	buffer.clear();
 
 	keyboardState_.processNextMidiBuffer(midiMessages, 0, buffer.getNumSamples(), true);
 
 	for (const auto metadata : midiMessages)
 	{
 		const auto message = metadata.getMessage();
-		const int channelTrack = std::max(0, message.getChannel() - 1);
+		const int channelTrack = std::clamp(message.getChannel() - 1, 0, 15);
 
 		if (message.isNoteOn())
 		{
@@ -70,6 +72,7 @@ void SunVoxAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
 		}
 	}
 
+	auto totalNumOutputChannels = getTotalNumOutputChannels();
 	if (totalNumOutputChannels > 0)
 	{
 		auto* leftChannel = buffer.getWritePointer(0);

@@ -12,9 +12,9 @@ SunVoxAudioProcessorEditor::SunVoxAudioProcessorEditor(SunVoxAudioProcessor& own
 	  presetBrowser_(processor_.getPresetManager(), processor_.getSunVoxEngine()),
 	  keyboardComponent_(processor_.getKeyboardState(), juce::MidiKeyboardComponent::horizontalKeyboard)
 {
-	setSize(1280, 720);
 	setResizable(true, true);
 	setResizeLimits(750, 480, 2560, 1440);
+	setSize(1280, 720);
 	setWantsKeyboardFocus(true);
 
 	// Style virtual keyboard

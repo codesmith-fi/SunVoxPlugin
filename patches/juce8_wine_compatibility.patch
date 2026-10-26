@@ -1,5 +1,5 @@
 diff --git a/modules/juce_graphics/native/juce_DirectWriteTypeface_windows.cpp b/modules/juce_graphics/native/juce_DirectWriteTypeface_windows.cpp
-index dee0481ff..8662db922 100644
+index dee0481ff..759911404 100644
 --- a/modules/juce_graphics/native/juce_DirectWriteTypeface_windows.cpp
 +++ b/modules/juce_graphics/native/juce_DirectWriteTypeface_windows.cpp
 @@ -649,37 +649,9 @@ public:
@@ -43,7 +43,7 @@ index dee0481ff..8662db922 100644
  
      ComSmartPtr<IDWriteFontFace> getIDWriteFontFace() const { return dwFontFace; }
 diff --git a/modules/juce_gui_basics/native/juce_VBlank_windows.cpp b/modules/juce_gui_basics/native/juce_VBlank_windows.cpp
-index 1c2ddcb62..e39bc6213 100644
+index 1c2ddcb62..c4a819a12 100644
 --- a/modules/juce_gui_basics/native/juce_VBlank_windows.cpp
 +++ b/modules/juce_gui_basics/native/juce_VBlank_windows.cpp
 @@ -172,11 +172,8 @@ class VBlankDispatcher final : public DeletedAtShutdown
@@ -71,7 +71,7 @@ index 1c2ddcb62..e39bc6213 100644
          for (auto& thread : threads)
              thread->updateMonitor();
 diff --git a/modules/juce_gui_basics/native/juce_Windowing_windows.cpp b/modules/juce_gui_basics/native/juce_Windowing_windows.cpp
-index 2e2eec13a..8bbc02884 100644
+index 2e2eec13a..d872335c4 100644
 --- a/modules/juce_gui_basics/native/juce_Windowing_windows.cpp
 +++ b/modules/juce_gui_basics/native/juce_Windowing_windows.cpp
 @@ -1088,12 +1088,16 @@ public:
@@ -96,7 +96,7 @@ index 2e2eec13a..8bbc02884 100644
      }
  
      HBITMAP getHBITMAP() const { return hBitmap; }
-@@ -1460,7 +1464,11 @@ public:
+@@ -1460,7 +1464,12 @@ public:
  
          suspendResumeRegistration = ScopedSuspendResumeNotificationRegistration { hwnd };
  
@@ -106,10 +106,11 @@ index 2e2eec13a..8bbc02884 100644
 +            onVBlank (Time::getMillisecondCounterHiRes() * 0.001);
 +        });
 +        vblankFallbackTimer->startTimerHz (60);
++        component.repaint();
      }
  
      ~HWNDComponentPeer() override
-@@ -4693,6 +4701,7 @@ private:
+@@ -4693,6 +4702,7 @@ private:
  
      ScopedSuspendResumeNotificationRegistration suspendResumeRegistration;
      std::optional<TimedCallback> monitorUpdateTimer;
@@ -117,7 +118,7 @@ index 2e2eec13a..8bbc02884 100644
  
      std::unique_ptr<RenderContext> renderContext;
      std::optional<LPARAM> captionMouseDown;
-@@ -4706,7 +4715,7 @@ ModifierKeys HWNDComponentPeer::modifiersAtLastCallback;
+@@ -4706,7 +4716,7 @@ ModifierKeys HWNDComponentPeer::modifiersAtLastCallback;
  
  ComponentPeer* Component::createNewPeer (int styleFlags, void* parentHWND)
  {
@@ -126,7 +127,7 @@ index 2e2eec13a..8bbc02884 100644
  }
  
  Image createSnapshotOfNativeWindow (void* nativeWindowHandle)
-@@ -4821,7 +4830,7 @@ public:
+@@ -4821,7 +4831,7 @@ public:
  
      void onVBlank() override {}
  
@@ -135,7 +136,7 @@ index 2e2eec13a..8bbc02884 100644
  
  private:
      // If we've called UpdateLayeredWindow to display the window contents, retrieving the
-@@ -5528,7 +5537,7 @@ inline constexpr ContextDescriptor contextDescriptorList[]
+@@ -5528,7 +5538,7 @@ inline constexpr ContextDescriptor contextDescriptorList[]
  };
  
  // To add a new rendering backend, implement RenderContext for that backend, and then append the backend to this typelist

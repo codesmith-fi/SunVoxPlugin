@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <string>
 #include <vector>
+#include <mutex>
 
 namespace sunvox
 {
@@ -89,6 +90,7 @@ private:
 	int defaultSynthModule_{-1};
 	int activeMidiModule_{-1};
 	std::vector<float> interleavedBuffer_;
+	mutable std::recursive_mutex engineMutex_;
 
 	void updateDefaultModuleAfterLoad();
 };
