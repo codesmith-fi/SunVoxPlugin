@@ -12,6 +12,15 @@ SunVoxAudioProcessorEditor::SunVoxAudioProcessorEditor(SunVoxAudioProcessor& own
 	  presetBrowser_(processor_.getPresetManager(), processor_.getSunVoxEngine()),
 	  keyboardComponent_(processor_.getKeyboardState(), juce::MidiKeyboardComponent::horizontalKeyboard)
 {
+	setOpaque(true);
+#if JUCE_WINDOWS && ENABLE_WINE_BUILD
+	if (auto* peer = getPeer())
+	{
+		peer->setCurrentRenderingEngine(0);
+		repaint();
+	}
+#endif
+
 	setResizable(true, true);
 	setResizeLimits(750, 480, 2560, 1440);
 	setSize(1280, 720);
@@ -346,6 +355,32 @@ bool SunVoxAudioProcessorEditor::keyPressed(const juce::KeyPress& key)
 	}
 
 	return false;
+}
+
+void SunVoxAudioProcessorEditor::parentHierarchyChanged()
+{
+	juce::AudioProcessorEditor::parentHierarchyChanged();
+	setOpaque(true);
+#if JUCE_WINDOWS
+	if (auto* peer = getPeer())
+	{
+		peer->setCurrentRenderingEngine(0);
+		repaint();
+	}
+#endif
+}
+
+void SunVoxAudioProcessorEditor::visibilityChanged()
+{
+	juce::AudioProcessorEditor::visibilityChanged();
+	setOpaque(true);
+#if JUCE_WINDOWS
+	if (auto* peer = getPeer())
+	{
+		peer->setCurrentRenderingEngine(0);
+		repaint();
+	}
+#endif
 }
 
 } // namespace sunvox

@@ -25,6 +25,9 @@ public:
 
 	void refreshUI();
 
+	void parentHierarchyChanged() override;
+	void visibilityChanged() override;
+
 private:
 	SunVoxAudioProcessor& processor_;
 	GraphCanvas graphCanvas_;

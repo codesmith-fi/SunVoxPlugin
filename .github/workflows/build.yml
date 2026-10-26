@@ -86,7 +86,13 @@ jobs:
 
       - name: Configure CMake (Windows)
         if: runner.os == 'Windows'
-        run: cmake -B build -A x64 -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+        shell: bash
+        run: |
+          if [ "${{ matrix.wine_patch }}" = "true" ]; then
+            cmake -B build -A x64 -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -DENABLE_WINE_FIXES=ON
+          else
+            cmake -B build -A x64 -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -DENABLE_WINE_FIXES=OFF
+          fi
 
       - name: Build All Targets
         run: cmake --build build --config ${{ matrix.build_type }} --parallel

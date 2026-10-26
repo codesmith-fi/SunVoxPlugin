@@ -4,6 +4,28 @@ project(SunVoxPlugin VERSION 0.1.0 LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+option(ENABLE_WINE_FIXES "Enable Wine/Bottles specific rendering and focus workarounds" OFF)
+
+if (WIN32)
+    if (ENABLE_WINE_FIXES)
+        message(STATUS "Build Target: Linux WINE / Bottles Compatibility Mode")
+        add_compile_definitions(
+            JUCE_DIRECT2D=0
+            JUCE_USE_DIRECTWRITE=0
+            JUCE_USE_OPENGL=0
+            ENABLE_WINE_BUILD=1
+        )
+    else()
+        message(STATUS "Build Target: Windows Native (Direct2D / Standard Windows Messaging)")
+        add_compile_definitions(
+            JUCE_DIRECT2D=1
+            JUCE_USE_DIRECTWRITE=1
+            JUCE_USE_OPENGL=0
+            ENABLE_WINE_BUILD=0
+        )
+    endif()
+endif()
+
 # JUCE Framework
 include(FetchContent)
 FetchContent_Declare(
