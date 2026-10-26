@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -7,6 +8,48 @@
 
 namespace sunvox
 {
+
+class SlotManager
+{
+public:
+	static int acquireSlot()
+	{
+		std::lock_guard<std::mutex> lock(mutex_);
+		for (size_t i = 0; i < usedSlots_.size(); ++i)
+		{
+			if (!usedSlots_[i])
+			{
+				usedSlots_[i] = true;
+				return static_cast<int>(i);
+			}
+		}
+		return -1; // All 16 slots full
+	}
+
+	static void releaseSlot(int slot)
+	{
+		std::lock_guard<std::mutex> lock(mutex_);
+		if (slot >= 0 && static_cast<size_t>(slot) < usedSlots_.size())
+		{
+			usedSlots_[static_cast<size_t>(slot)] = false;
+		}
+	}
+
+	static int getActiveSlotCount()
+	{
+		std::lock_guard<std::mutex> lock(mutex_);
+		int count = 0;
+		for (bool used : usedSlots_)
+		{
+			if (used) ++count;
+		}
+		return count;
+	}
+
+private:
+	static inline std::mutex mutex_;
+	static inline std::array<bool, 16> usedSlots_{false};
+};
 
 struct ModuleInfo
 {
@@ -86,11 +129,15 @@ private:
 	bool isLibraryLoaded_{false};
 	bool isInitialized_{false};
 	int sampleRate_{44100};
-	int slot_{0};
+	int slot_{-1};
 	int defaultSynthModule_{-1};
 	int activeMidiModule_{-1};
 	std::vector<float> interleavedBuffer_;
 	mutable std::recursive_mutex engineMutex_;
+
+	static inline std::mutex globalInitMutex_;
+	static inline std::mutex globalAudioMutex_;
+	static inline int globalInstanceCount_{0};
 
 	void updateDefaultModuleAfterLoad();
 };

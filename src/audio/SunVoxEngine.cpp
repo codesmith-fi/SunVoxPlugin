@@ -124,30 +124,55 @@ bool SunVoxEngine::init(int sampleRate)
 {
 	std::lock_guard<std::recursive_mutex> lock(engineMutex_);
 
-	if (isInitialized_ && sampleRate_ == sampleRate)
+	if (isInitialized_ && sampleRate_ == sampleRate && slot_ >= 0)
 		return true;
 
 	if (isInitialized_)
 		close();
+
+	std::lock_guard<std::mutex> globalLock(globalInitMutex_);
 
 	if (!isLibraryLoaded_ && !loadLibrary())
 		return false;
 
 	sampleRate_ = sampleRate > 0 ? sampleRate : 44100;
 
-	uint32_t flags = SV_INIT_FLAG_USER_AUDIO_CALLBACK |
-	                 SV_INIT_FLAG_AUDIO_FLOAT32 |
-	                 SV_INIT_FLAG_ONE_THREAD;
-
-	int res = sv_init(nullptr, sampleRate_, 2, flags);
-	if (res < 0)
+	// Global sv_init only once across all instances in the process
+	if (globalInstanceCount_ == 0)
 	{
-		std::cerr << "[SunVoxEngine] Failed to initialize SunVox, code: " << res << std::endl;
+		uint32_t flags = SV_INIT_FLAG_USER_AUDIO_CALLBACK |
+		                 SV_INIT_FLAG_AUDIO_FLOAT32 |
+		                 SV_INIT_FLAG_ONE_THREAD;
+
+		int res = sv_init(nullptr, sampleRate_, 2, flags);
+		if (res < 0)
+		{
+			std::cerr << "[SunVoxEngine] Failed to initialize global SunVox sound system, code: " << res << std::endl;
+			return false;
+		}
+	}
+
+	// Acquire a dynamic slot (0..15)
+	slot_ = SlotManager::acquireSlot();
+	if (slot_ < 0)
+	{
+		std::cerr << "[SunVoxEngine] Error: All SunVox slots (0-15) are occupied!" << std::endl;
+		if (globalInstanceCount_ == 0)
+		{
+			sv_deinit();
+		}
 		return false;
 	}
 
 	sv_open_slot(slot_);
+	sv_pause(slot_); // Keep paused so it won't bleed into other instances until rendered
+	sv_volume(slot_, 256);
+
+	globalInstanceCount_++;
 	isInitialized_ = true;
+
+	std::cout << "[SunVoxEngine] Instance initialized on Slot " << slot_
+	          << " (active instances: " << globalInstanceCount_ << ")" << std::endl;
 
 	createDefaultSynth();
 	return true;
@@ -155,7 +180,7 @@ bool SunVoxEngine::init(int sampleRate)
 
 bool SunVoxEngine::createDefaultSynth()
 {
-	if (!isInitialized_)
+	if (!isInitialized_ || slot_ < 0)
 		return false;
 
 	sv_lock_slot(slot_);
@@ -165,11 +190,11 @@ bool SunVoxEngine::createDefaultSynth()
 		// Module 0 is always the master Output module in SunVox
 		sv_connect_module(slot_, defaultSynthModule_, 0);
 		std::cout << "[SunVoxEngine] Created Generator module (" << defaultSynthModule_
-		          << ") and connected to Output (0)" << std::endl;
+		          << ") on Slot " << slot_ << " and connected to Output (0)" << std::endl;
 	}
 	else
 	{
-		std::cerr << "[SunVoxEngine] Failed to create Generator module" << std::endl;
+		std::cerr << "[SunVoxEngine] Failed to create Generator module on Slot " << slot_ << std::endl;
 	}
 	sv_unlock_slot(slot_);
 
@@ -178,7 +203,7 @@ bool SunVoxEngine::createDefaultSynth()
 
 void SunVoxEngine::clearNonOutputModules()
 {
-	if (!isInitialized_)
+	if (!isInitialized_ || slot_ < 0)
 		return;
 
 	sv_lock_slot(slot_);
@@ -198,7 +223,7 @@ void SunVoxEngine::clearNonOutputModules()
 
 bool SunVoxEngine::loadProject(const std::string& filePath)
 {
-	if (!isInitialized_)
+	if (!isInitialized_ || slot_ < 0)
 		return false;
 
 	sv_lock_slot(slot_);
@@ -207,6 +232,8 @@ bool SunVoxEngine::loadProject(const std::string& filePath)
 
 	if (res == 0)
 	{
+		sv_pause(slot_); // keep slot paused so it won't bleed into other instances
+		sv_volume(slot_, 256);
 		updateDefaultModuleAfterLoad();
 		return true;
 	}
@@ -215,7 +242,7 @@ bool SunVoxEngine::loadProject(const std::string& filePath)
 
 bool SunVoxEngine::saveProject(const std::string& filePath)
 {
-	if (!isInitialized_)
+	if (!isInitialized_ || slot_ < 0)
 		return false;
 
 	sv_lock_slot(slot_);
@@ -226,7 +253,7 @@ bool SunVoxEngine::saveProject(const std::string& filePath)
 
 int SunVoxEngine::loadModule(const std::string& filePath, int x, int y)
 {
-	if (!isInitialized_)
+	if (!isInitialized_ || slot_ < 0)
 		return -1;
 
 	sv_lock_slot(slot_);
@@ -238,7 +265,7 @@ int SunVoxEngine::loadModule(const std::string& filePath, int x, int y)
 std::vector<uint8_t> SunVoxEngine::saveToMemory()
 {
 	std::vector<uint8_t> buffer;
-	if (!isInitialized_)
+	if (!isInitialized_ || slot_ < 0)
 		return buffer;
 
 	sv_lock_slot(slot_);
@@ -257,7 +284,7 @@ std::vector<uint8_t> SunVoxEngine::saveToMemory()
 
 bool SunVoxEngine::loadFromMemory(const void* data, size_t size)
 {
-	if (!isInitialized_ || data == nullptr || size == 0)
+	if (!isInitialized_ || slot_ < 0 || data == nullptr || size == 0)
 		return false;
 
 	sv_lock_slot(slot_);
@@ -266,6 +293,8 @@ bool SunVoxEngine::loadFromMemory(const void* data, size_t size)
 
 	if (res == 0)
 	{
+		sv_pause(slot_); // keep slot paused so it won't bleed into other instances
+		sv_volume(slot_, 256);
 		updateDefaultModuleAfterLoad();
 		return true;
 	}
@@ -275,6 +304,8 @@ bool SunVoxEngine::loadFromMemory(const void* data, size_t size)
 void SunVoxEngine::updateDefaultModuleAfterLoad()
 {
 	defaultSynthModule_ = -1;
+	if (slot_ < 0)
+		return;
 	int numModules = sv_get_number_of_modules(slot_);
 	for (int i = 1; i < numModules; ++i)
 	{
@@ -295,25 +326,35 @@ void SunVoxEngine::updateDefaultModuleAfterLoad()
 void SunVoxEngine::close()
 {
 	std::lock_guard<std::recursive_mutex> lock(engineMutex_);
-	if (isInitialized_)
+	if (isInitialized_ && slot_ >= 0)
 	{
 		sv_stop(slot_);
 		sv_close_slot(slot_);
-		sv_deinit();
+		SlotManager::releaseSlot(slot_);
+		std::cout << "[SunVoxEngine] Closed Slot " << slot_ << std::endl;
+		slot_ = -1;
 		isInitialized_ = false;
-	}
 
-	if (isLibraryLoaded_)
-	{
-		sv_unload_dll();
-		isLibraryLoaded_ = false;
+		std::lock_guard<std::mutex> globalLock(globalInitMutex_);
+		globalInstanceCount_--;
+		if (globalInstanceCount_ <= 0)
+		{
+			globalInstanceCount_ = 0;
+			sv_deinit();
+			if (isLibraryLoaded_)
+			{
+				sv_unload_dll();
+				isLibraryLoaded_ = false;
+			}
+			std::cout << "[SunVoxEngine] All instances closed. Global deinit complete." << std::endl;
+		}
 	}
 }
 
 void SunVoxEngine::renderAudio(float* leftOutput, float* rightOutput, int numFrames)
 {
 	std::lock_guard<std::recursive_mutex> lock(engineMutex_);
-	if (!isInitialized_ || numFrames <= 0)
+	if (!isInitialized_ || slot_ < 0 || numFrames <= 0)
 	{
 		std::fill_n(leftOutput, numFrames, 0.0f);
 		std::fill_n(rightOutput, numFrames, 0.0f);
@@ -327,7 +368,14 @@ void SunVoxEngine::renderAudio(float* leftOutput, float* rightOutput, int numFra
 	}
 
 	uint32_t ticks = sv_get_ticks();
-	sv_audio_callback(interleavedBuffer_.data(), numFrames, 0, ticks);
+
+	// Render this slot exclusively to prevent bleed between instances
+	{
+		std::lock_guard<std::mutex> audioLock(globalAudioMutex_);
+		sv_resume(slot_);
+		sv_audio_callback(interleavedBuffer_.data(), numFrames, 0, ticks);
+		sv_pause(slot_);
+	}
 
 	for (int i = 0; i < numFrames; ++i)
 	{
@@ -339,7 +387,7 @@ void SunVoxEngine::renderAudio(float* leftOutput, float* rightOutput, int numFra
 void SunVoxEngine::sendMidiNote(int note, int velocity, int track)
 {
 	int targetMod = (activeMidiModule_ >= 0) ? activeMidiModule_ : defaultSynthModule_;
-	if (!isInitialized_ || targetMod < 0)
+	if (!isInitialized_ || slot_ < 0 || targetMod < 0)
 		return;
 
 	int svNote = std::clamp(note + 1, 1, 127);
@@ -352,7 +400,7 @@ void SunVoxEngine::sendMidiNote(int note, int velocity, int track)
 void SunVoxEngine::sendMidiNoteOff(int track)
 {
 	int targetMod = (activeMidiModule_ >= 0) ? activeMidiModule_ : defaultSynthModule_;
-	if (!isInitialized_ || targetMod < 0)
+	if (!isInitialized_ || slot_ < 0 || targetMod < 0)
 		return;
 
 	int targetModule = targetMod + 1;
@@ -373,7 +421,7 @@ void SunVoxEngine::sendMidiNoteOn(int track, int noteNumber, float velocity)
 
 void SunVoxEngine::sendAllNotesOff()
 {
-	if (!isInitialized_)
+	if (!isInitialized_ || slot_ < 0)
 		return;
 
 	sv_send_event(slot_, 0, NOTECMD_ALL_NOTES_OFF, 0, 0, 0, 0);
@@ -382,7 +430,7 @@ void SunVoxEngine::sendAllNotesOff()
 void SunVoxEngine::sendPitchBend(int track, int pitchVal)
 {
 	int targetMod = (activeMidiModule_ >= 0) ? activeMidiModule_ : defaultSynthModule_;
-	if (!isInitialized_ || targetMod < 0)
+	if (!isInitialized_ || slot_ < 0 || targetMod < 0)
 		return;
 
 	int targetModule = targetMod + 1;
@@ -392,7 +440,7 @@ void SunVoxEngine::sendPitchBend(int track, int pitchVal)
 std::vector<ModuleInfo> SunVoxEngine::getActiveModules()
 {
 	std::vector<ModuleInfo> modules;
-	if (!isInitialized_)
+	if (!isInitialized_ || slot_ < 0)
 		return modules;
 
 	sv_lock_slot(slot_);
@@ -438,7 +486,7 @@ std::vector<ModuleInfo> SunVoxEngine::getActiveModules()
 
 int SunVoxEngine::createModule(const std::string& type, const std::string& name, int x, int y)
 {
-	if (!isInitialized_)
+	if (!isInitialized_ || slot_ < 0)
 		return -1;
 
 	sv_lock_slot(slot_);
@@ -449,7 +497,7 @@ int SunVoxEngine::createModule(const std::string& type, const std::string& name,
 
 bool SunVoxEngine::removeModule(int modId)
 {
-	if (!isInitialized_ || modId < 0)
+	if (!isInitialized_ || slot_ < 0 || modId < 0)
 		return false;
 
 	sv_lock_slot(slot_);
@@ -460,7 +508,7 @@ bool SunVoxEngine::removeModule(int modId)
 
 bool SunVoxEngine::connectModule(int source, int destination)
 {
-	if (!isInitialized_ || source < 0 || destination < 0)
+	if (!isInitialized_ || slot_ < 0 || source < 0 || destination < 0)
 		return false;
 
 	sv_lock_slot(slot_);
@@ -471,7 +519,7 @@ bool SunVoxEngine::connectModule(int source, int destination)
 
 bool SunVoxEngine::disconnectModule(int source, int destination)
 {
-	if (!isInitialized_ || source < 0 || destination < 0)
+	if (!isInitialized_ || slot_ < 0 || source < 0 || destination < 0)
 		return false;
 
 	sv_lock_slot(slot_);
@@ -482,7 +530,7 @@ bool SunVoxEngine::disconnectModule(int source, int destination)
 
 bool SunVoxEngine::disconnectAllInputs(int modId)
 {
-	if (!isInitialized_ || modId < 0)
+	if (!isInitialized_ || slot_ < 0 || modId < 0)
 		return false;
 
 	auto modules = getActiveModules();
@@ -503,7 +551,7 @@ bool SunVoxEngine::disconnectAllInputs(int modId)
 
 bool SunVoxEngine::disconnectAllOutputs(int modId)
 {
-	if (!isInitialized_ || modId < 0)
+	if (!isInitialized_ || slot_ < 0 || modId < 0)
 		return false;
 
 	auto modules = getActiveModules();
@@ -523,7 +571,7 @@ bool SunVoxEngine::disconnectAllOutputs(int modId)
 
 bool SunVoxEngine::setModuleXY(int modId, int x, int y)
 {
-	if (!isInitialized_ || modId < 0)
+	if (!isInitialized_ || slot_ < 0 || modId < 0)
 		return false;
 
 	return sv_set_module_xy(slot_, modId, x, y) == 0;
@@ -532,7 +580,7 @@ bool SunVoxEngine::setModuleXY(int modId, int x, int y)
 std::vector<ControllerInfo> SunVoxEngine::getModuleControllers(int modId)
 {
 	std::vector<ControllerInfo> controllers;
-	if (!isInitialized_ || modId < 0)
+	if (!isInitialized_ || slot_ < 0 || modId < 0)
 		return controllers;
 
 	int numCtls = sv_get_number_of_module_ctls(slot_, modId);
@@ -558,7 +606,7 @@ std::vector<ControllerInfo> SunVoxEngine::getModuleControllers(int modId)
 
 void SunVoxEngine::setModuleCtlValue(int modId, int ctlId, int value)
 {
-	if (!isInitialized_ || modId < 0 || ctlId < 0)
+	if (!isInitialized_ || slot_ < 0 || modId < 0 || ctlId < 0)
 		return;
 
 	sv_set_module_ctl_value(slot_, modId, ctlId, value, 0);
