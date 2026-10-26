@@ -42,50 +42,82 @@ index dee0481ff..8662db922 100644
      }
  
      ComSmartPtr<IDWriteFontFace> getIDWriteFontFace() const { return dwFontFace; }
+diff --git a/modules/juce_gui_basics/native/juce_VBlank_windows.cpp b/modules/juce_gui_basics/native/juce_VBlank_windows.cpp
+index 1c2ddcb62..e39bc6213 100644
+--- a/modules/juce_gui_basics/native/juce_VBlank_windows.cpp
++++ b/modules/juce_gui_basics/native/juce_VBlank_windows.cpp
+@@ -172,11 +172,8 @@ class VBlankDispatcher final : public DeletedAtShutdown
+ public:
+     void updateDisplay (ComponentPeer::VBlankListener& listener, HMONITOR monitor)
+     {
+-        if (monitor == nullptr)
+-        {
+-            removeListener (listener);
+-            return;
+-        }
++        ignoreUnused (listener, monitor);
++        return;
+ 
+         auto threadWithListener = threads.end();
+         auto threadWithMonitor  = threads.end();
+@@ -240,8 +237,7 @@ public:
+ 
+     void reconfigureDisplays()
+     {
+-        SharedResourcePointer<DirectX> directX;
+-        directX->adapters.updateAdapters();
++        return;
+ 
+         for (auto& thread : threads)
+             thread->updateMonitor();
 diff --git a/modules/juce_gui_basics/native/juce_Windowing_windows.cpp b/modules/juce_gui_basics/native/juce_Windowing_windows.cpp
-index 2e2eec13a..39708e6dd 100644
+index 2e2eec13a..8bbc02884 100644
 --- a/modules/juce_gui_basics/native/juce_Windowing_windows.cpp
 +++ b/modules/juce_gui_basics/native/juce_Windowing_windows.cpp
-@@ -1088,12 +1088,7 @@ public:
+@@ -1088,12 +1088,16 @@ public:
      void blitToDC (HDC dc, int x, int y) const noexcept
      {
          SetMapMode (dc, MM_TEXT);
--
++        GdiFlush();
+ 
 -        StretchDIBits (dc,
 -                       x, y, width, height,
 -                       0, 0, width, height,
 -                       bitmapData, (const BITMAPINFO*) &bitmapInfo,
 -                       DIB_RGB_COLORS, SRCCOPY);
-+        BitBlt (dc, x, y, width, height, hdc, 0, 0, SRCCOPY);
++        if (! BitBlt (dc, x, y, width, height, hdc, 0, 0, SRCCOPY))
++        {
++            StretchDIBits (dc,
++                           x, y, width, height,
++                           0, 0, width, height,
++                           bitmapData, (const BITMAPINFO*) &bitmapInfo,
++                           DIB_RGB_COLORS, SRCCOPY);
++        }
      }
  
      HBITMAP getHBITMAP() const { return hBitmap; }
-@@ -1460,7 +1455,8 @@ public:
+@@ -1460,7 +1464,11 @@ public:
  
          suspendResumeRegistration = ScopedSuspendResumeNotificationRegistration { hwnd };
  
 -        setCurrentRenderingEngine (engine);
 +        setCurrentRenderingEngine (0);
-+        vblankFallbackTimer.emplace (*this);
++        vblankFallbackTimer.emplace ([this] {
++            onVBlank (Time::getMillisecondCounterHiRes() * 0.001);
++        });
++        vblankFallbackTimer->startTimerHz (60);
      }
  
      ~HWNDComponentPeer() override
-@@ -4697,6 +4693,14 @@ private:
+@@ -4693,6 +4701,7 @@ private:
+ 
+     ScopedSuspendResumeNotificationRegistration suspendResumeRegistration;
+     std::optional<TimedCallback> monitorUpdateTimer;
++    std::optional<TimedCallback> vblankFallbackTimer;
+ 
      std::unique_ptr<RenderContext> renderContext;
      std::optional<LPARAM> captionMouseDown;
- 
-+    struct VBlankFallbackTimer final : private Timer
-+    {
-+        explicit VBlankFallbackTimer (HWNDComponentPeer& p) : peer (p) { startTimerHz (60); }
-+        void timerCallback() override { peer.onVBlank (Time::getMillisecondCounterHiRes() * 0.001); }
-+        HWNDComponentPeer& peer;
-+    };
-+    std::optional<VBlankFallbackTimer> vblankFallbackTimer;
-+
-     //==============================================================================
-     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (HWNDComponentPeer)
- };
-@@ -4706,7 +4710,7 @@ ModifierKeys HWNDComponentPeer::modifiersAtLastCallback;
+@@ -4706,7 +4715,7 @@ ModifierKeys HWNDComponentPeer::modifiersAtLastCallback;
  
  ComponentPeer* Component::createNewPeer (int styleFlags, void* parentHWND)
  {
@@ -94,3 +126,21 @@ index 2e2eec13a..39708e6dd 100644
  }
  
  Image createSnapshotOfNativeWindow (void* nativeWindowHandle)
+@@ -4821,7 +4830,7 @@ public:
+ 
+     void onVBlank() override {}
+ 
+-    void handleShowWindow() override {}
++    void handleShowWindow() override { peer.getComponent().repaint(); }
+ 
+ private:
+     // If we've called UpdateLayeredWindow to display the window contents, retrieving the
+@@ -5528,7 +5537,7 @@ inline constexpr ContextDescriptor contextDescriptorList[]
+ };
+ 
+ // To add a new rendering backend, implement RenderContext for that backend, and then append the backend to this typelist
+-inline constexpr auto& contextDescriptors = contextDescriptorList<GDIRenderContext, D2DRenderContext>;
++inline constexpr auto& contextDescriptors = contextDescriptorList<GDIRenderContext, GDIRenderContext>;
+ 
+ void HWNDComponentPeer::setCurrentRenderingEngine (int e)
+ {
