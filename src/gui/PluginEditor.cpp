@@ -357,6 +357,212 @@ bool SunVoxAudioProcessorEditor::keyPressed(const juce::KeyPress& key)
 	return false;
 }
 
+void SunVoxAudioProcessorEditor::paintOverChildren(juce::Graphics& g)
+{
+	if (!isDraggingFile_)
+		return;
+
+	auto bounds = getLocalBounds();
+
+	// Translucent dark overlay over the whole window
+	g.setColour(juce::Colour(0xcc0b0f14));
+	g.fillRect(bounds);
+
+	auto innerBounds = bounds.reduced(14);
+	juce::Path borderPath;
+	borderPath.addRoundedRectangle(innerBounds.toFloat(), 10.0f);
+
+	if (isDragValid_)
+	{
+		// Neon cyan outer glow / dashed outline
+		g.setColour(juce::Colour(0xff00e5ff).withAlpha(0.25f));
+		g.strokePath(borderPath, juce::PathStrokeType(6.0f));
+
+		g.setColour(juce::Colour(0xff00e5ff));
+		juce::PathStrokeType stroke(2.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded);
+		juce::Path dashedBorder;
+		float dashes[] = {12.0f, 6.0f};
+		stroke.createDashedStroke(dashedBorder, borderPath, dashes, 2);
+		g.fillPath(dashedBorder);
+
+		// Center banner card
+		auto center = bounds.getCentre().toFloat();
+		juce::Rectangle<float> card(center.x - 220.0f, center.y - 65.0f, 440.0f, 130.0f);
+
+		g.setColour(juce::Colour(0xff181a1f));
+		g.fillRoundedRectangle(card, 8.0f);
+
+		g.setColour(juce::Colour(0xff00e5ff).withAlpha(0.7f));
+		g.drawRoundedRectangle(card, 8.0f, 1.5f);
+
+		auto textRect = card;
+		g.setColour(juce::Colour(0xff00e5ff));
+		g.setFont(juce::FontOptions(19.0f, juce::Font::bold));
+		g.drawText("DROP TO IMPORT", textRect.removeFromTop(45.0f), juce::Justification::centred);
+
+		g.setColour(juce::Colour(0xffe5e9f0));
+		g.setFont(juce::FontOptions(13.5f));
+		g.drawText(".sunvox (Load Project)  •  .sunsynth (Insert Module)", textRect.removeFromTop(30.0f), juce::Justification::centred);
+
+		g.setColour(juce::Colour(0xff8a9ba8));
+		g.setFont(juce::FontOptions(12.0f));
+		g.drawText("Release to load into SunVox modular graph", textRect, juce::Justification::centred);
+	}
+	else
+	{
+		// Red outline for unsupported files
+		g.setColour(juce::Colour(0xffe74c3c).withAlpha(0.25f));
+		g.strokePath(borderPath, juce::PathStrokeType(6.0f));
+
+		g.setColour(juce::Colour(0xffe74c3c));
+		juce::PathStrokeType stroke(2.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded);
+		juce::Path dashedBorder;
+		float dashes[] = {8.0f, 4.0f};
+		stroke.createDashedStroke(dashedBorder, borderPath, dashes, 2);
+		g.fillPath(dashedBorder);
+
+		auto center = bounds.getCentre().toFloat();
+		juce::Rectangle<float> card(center.x - 180.0f, center.y - 45.0f, 360.0f, 90.0f);
+
+		g.setColour(juce::Colour(0xff181a1f));
+		g.fillRoundedRectangle(card, 8.0f);
+
+		g.setColour(juce::Colour(0xffe74c3c).withAlpha(0.7f));
+		g.drawRoundedRectangle(card, 8.0f, 1.5f);
+
+		auto textRect = card;
+		g.setColour(juce::Colour(0xffe74c3c));
+		g.setFont(juce::FontOptions(16.0f, juce::Font::bold));
+		g.drawText("Unsupported File Type", textRect.removeFromTop(45.0f), juce::Justification::centred);
+
+		g.setColour(juce::Colour(0xffabb2bf));
+		g.setFont(juce::FontOptions(12.0f));
+		g.drawText("Please drop .sunvox or .sunsynth files", textRect, juce::Justification::centred);
+	}
+}
+
+bool SunVoxAudioProcessorEditor::isInterestedInFileDrag(const juce::StringArray& files)
+{
+	for (const auto& file : files)
+	{
+		juce::File f(file);
+		if (f.hasFileExtension(".sunvox") || f.hasFileExtension(".sunsynth"))
+			return true;
+	}
+	return false;
+}
+
+void SunVoxAudioProcessorEditor::fileDragEnter(const juce::StringArray& files, int x, int y)
+{
+	isDraggingFile_ = true;
+	isDragValid_ = isInterestedInFileDrag(files);
+	dragDropPos_ = {x, y};
+	repaint();
+}
+
+void SunVoxAudioProcessorEditor::fileDragMove(const juce::StringArray& files, int x, int y)
+{
+	isDraggingFile_ = true;
+	isDragValid_ = isInterestedInFileDrag(files);
+	dragDropPos_ = {x, y};
+	repaint();
+}
+
+void SunVoxAudioProcessorEditor::fileDragExit(const juce::StringArray&)
+{
+	isDraggingFile_ = false;
+	repaint();
+}
+
+void SunVoxAudioProcessorEditor::filesDropped(const juce::StringArray& files, int x, int y)
+{
+	isDraggingFile_ = false;
+	repaint();
+
+	std::vector<juce::File> sunvoxFiles;
+	std::vector<juce::File> sunsynthFiles;
+
+	for (const auto& filePath : files)
+	{
+		juce::File file(filePath);
+		if (file.hasFileExtension(".sunvox"))
+			sunvoxFiles.push_back(file);
+		else if (file.hasFileExtension(".sunsynth"))
+			sunsynthFiles.push_back(file);
+	}
+
+	// 1. If any .sunvox project files are dropped, load the first project file
+	if (!sunvoxFiles.empty())
+	{
+		const auto& projectFile = sunvoxFiles.front();
+		if (projectFile.existsAsFile())
+		{
+			processor_.getPresetManager().loadPreset(projectFile, processor_.getSunVoxEngine());
+			refreshUI();
+		}
+	}
+
+	// 2. If any .sunsynth module files are dropped
+	if (!sunsynthFiles.empty())
+	{
+		// Check if dropped specifically onto Preset Browser drawer
+		if (isBrowserOpen_ && presetBrowser_.getBounds().contains(x, y))
+		{
+			// Load as auditioned preset
+			processor_.getPresetManager().loadPreset(sunsynthFiles.front(), processor_.getSunVoxEngine());
+			refreshUI();
+			return;
+		}
+
+		// Otherwise insert module(s) onto the canvas at drop position
+		juce::Point<int> dropScreenPoint(x, y);
+		juce::Point<int> localCanvasPoint = graphCanvas_.getLocalPoint(this, dropScreenPoint);
+
+		juce::Point<float> worldDropPoint;
+		if (graphCanvas_.getLocalBounds().contains(localCanvasPoint))
+		{
+			worldDropPoint = graphCanvas_.screenToWorld(localCanvasPoint.toFloat());
+		}
+		else
+		{
+			// Fallback to center of canvas
+			worldDropPoint = graphCanvas_.screenToWorld(graphCanvas_.getLocalBounds().getCentre().toFloat());
+		}
+
+		int lastLoadedId = -1;
+		int offsetX = 0;
+		int offsetY = 0;
+
+		for (const auto& synthFile : sunsynthFiles)
+		{
+			if (!synthFile.existsAsFile())
+				continue;
+
+			int modX = static_cast<int>(std::round(worldDropPoint.x)) + offsetX;
+			int modY = static_cast<int>(std::round(worldDropPoint.y)) + offsetY;
+
+			int modId = processor_.getSunVoxEngine().loadModule(synthFile.getFullPathName().toStdString(), modX, modY);
+			if (modId >= 0)
+			{
+				// Connect newly added module to Output (module 0) and activate for MIDI input
+				processor_.getSunVoxEngine().connectModules(modId, 0);
+				processor_.getSunVoxEngine().setActiveMidiModule(modId);
+				lastLoadedId = modId;
+
+				offsetX += 40;
+				offsetY += 40;
+			}
+		}
+
+		if (lastLoadedId >= 0)
+		{
+			refreshUI();
+			graphCanvas_.selectModule(lastLoadedId);
+			inspectorPanel_.inspectModule(lastLoadedId);
+		}
+	}
+}
+
 void SunVoxAudioProcessorEditor::parentHierarchyChanged()
 {
 	juce::AudioProcessorEditor::parentHierarchyChanged();

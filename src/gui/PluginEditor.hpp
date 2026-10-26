@@ -12,16 +12,25 @@ namespace sunvox
 
 class SunVoxAudioProcessor;
 
-class SunVoxAudioProcessorEditor : public juce::AudioProcessorEditor
+class SunVoxAudioProcessorEditor : public juce::AudioProcessorEditor,
+                                   public juce::FileDragAndDropTarget
 {
 public:
 	explicit SunVoxAudioProcessorEditor(SunVoxAudioProcessor& owner);
 	~SunVoxAudioProcessorEditor() override;
 
 	void paint(juce::Graphics& g) override;
+	void paintOverChildren(juce::Graphics& g) override;
 	void resized() override;
 	bool keyPressed(const juce::KeyPress& key) override;
 	void mouseDown(const juce::MouseEvent& e) override;
+
+	// juce::FileDragAndDropTarget overrides
+	bool isInterestedInFileDrag(const juce::StringArray& files) override;
+	void fileDragEnter(const juce::StringArray& files, int x, int y) override;
+	void fileDragMove(const juce::StringArray& files, int x, int y) override;
+	void fileDragExit(const juce::StringArray& files) override;
+	void filesDropped(const juce::StringArray& files, int x, int y) override;
 
 	void refreshUI();
 
@@ -45,6 +54,11 @@ private:
 
 	bool isBrowserOpen_{false};
 	std::unique_ptr<juce::FileChooser> fileChooser_;
+
+	// Drag & Drop state
+	bool isDraggingFile_{false};
+	bool isDragValid_{false};
+	juce::Point<int> dragDropPos_;
 
 	void handleLoadClicked();
 	void handleSaveClicked();
