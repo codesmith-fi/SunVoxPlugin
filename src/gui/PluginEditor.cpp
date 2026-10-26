@@ -41,7 +41,12 @@ SunVoxAudioProcessorEditor::SunVoxAudioProcessorEditor(SunVoxAudioProcessor& own
 	addAndMakeVisible(inspectorPanel_);
 	graphCanvas_.onModuleSelected = [this](int modId) {
 		if (modId > 0)
+		{
 			processor_.getSunVoxEngine().setActiveMidiModule(modId);
+			targetModuleSelector_.setSelectedId(modId + 1, juce::dontSendNotification);
+			graphCanvas_.setTargetMidiModuleId(modId);
+			repaint();
+		}
 		inspectorPanel_.inspectModule(modId);
 	};
 
@@ -104,6 +109,29 @@ SunVoxAudioProcessorEditor::SunVoxAudioProcessorEditor(SunVoxAudioProcessor& own
 	addAndMakeVisible(currentPresetBtn_);
 	updatePresetDisplay();
 
+	// Target Playable Module Dropdown
+	targetModuleSelector_.setColour(juce::ComboBox::backgroundColourId, juce::Colour(0xff21252b));
+	targetModuleSelector_.setColour(juce::ComboBox::outlineColourId, juce::Colour(0xff3a4454));
+	targetModuleSelector_.setColour(juce::ComboBox::textColourId, juce::Colour(0xffe5e9f0));
+	targetModuleSelector_.setColour(juce::ComboBox::arrowColourId, juce::Colour(0xff00e5ff));
+	targetModuleSelector_.setTextWhenNothingSelected("No Playable Module");
+	targetModuleSelector_.setTextWhenNoChoicesAvailable("No Playable Module");
+	targetModuleSelector_.setTooltip("Select active module to receive MIDI notes and pitch bend");
+	targetModuleSelector_.onChange = [this] {
+		int selectedId = targetModuleSelector_.getSelectedId();
+		if (selectedId > 0)
+		{
+			int modId = selectedId - 1;
+			processor_.getSunVoxEngine().setActiveMidiModule(modId);
+			graphCanvas_.setTargetMidiModuleId(modId);
+			graphCanvas_.selectModule(modId);
+			inspectorPanel_.inspectModule(modId);
+			repaint();
+		}
+	};
+	addAndMakeVisible(targetModuleSelector_);
+	updateTargetModuleSelector();
+
 	// Listen for DAW state restoration
 	processor_.onStateChanged = [this] {
 		juce::MessageManager::callAsync([this] {
@@ -134,6 +162,7 @@ void SunVoxAudioProcessorEditor::refreshUI()
 
 	if (modId >= 0)
 	{
+		graphCanvas_.setTargetMidiModuleId(modId);
 		graphCanvas_.selectModule(modId);
 		inspectorPanel_.inspectModule(modId);
 	}
@@ -142,6 +171,7 @@ void SunVoxAudioProcessorEditor::refreshUI()
 		inspectorPanel_.clearInspection();
 	}
 	updatePresetDisplay();
+	updateTargetModuleSelector();
 	presetBrowser_.refreshBrowser();
 	repaint();
 }
@@ -150,6 +180,37 @@ void SunVoxAudioProcessorEditor::updatePresetDisplay()
 {
 	currentPresetBtn_.setButtonText(processor_.getPresetManager().getCurrentPresetDisplayName());
 	presetsToggleBtn_.setColour(juce::TextButton::buttonColourId, isBrowserOpen_ ? juce::Colour(0xff005b66) : juce::Colour(0xff2b323d));
+}
+
+void SunVoxAudioProcessorEditor::updateTargetModuleSelector()
+{
+	targetModuleSelector_.clear(juce::dontSendNotification);
+	auto playables = processor_.getSunVoxEngine().getPlayableModules();
+	int activeTarget = processor_.getSunVoxEngine().getActiveMidiModule();
+	int selectItemId = 0;
+
+	for (const auto& mod : playables)
+	{
+		int itemId = mod.id + 1;
+		juce::String label = "#" + juce::String(mod.id) + ": " + mod.name + " (" + mod.type + ")";
+		targetModuleSelector_.addItem(label, itemId);
+		if (mod.id == activeTarget)
+		{
+			selectItemId = itemId;
+		}
+	}
+
+	if (selectItemId > 0)
+	{
+		targetModuleSelector_.setSelectedId(selectItemId, juce::dontSendNotification);
+	}
+	else if (!playables.empty())
+	{
+		int firstId = playables.front().id;
+		processor_.getSunVoxEngine().setActiveMidiModule(firstId);
+		targetModuleSelector_.setSelectedId(firstId + 1, juce::dontSendNotification);
+		graphCanvas_.setTargetMidiModuleId(firstId);
+	}
 }
 
 void SunVoxAudioProcessorEditor::handleLoadClicked()
@@ -276,6 +337,10 @@ void SunVoxAudioProcessorEditor::resized()
 	prevPresetBtn_.setBounds(448, 13, 26, 28);
 	currentPresetBtn_.setBounds(478, 13, 220, 28);
 	nextPresetBtn_.setBounds(702, 13, 26, 28);
+
+	int targetModX = 740;
+	int targetModW = std::max(120, std::min(220, getWidth() - 280 - targetModX));
+	targetModuleSelector_.setBounds(targetModX, 13, targetModW, 28);
 
 	auto keyboardArea = bounds.removeFromBottom(84).reduced(16, 4);
 	keyboardComponent_.setBounds(keyboardArea);

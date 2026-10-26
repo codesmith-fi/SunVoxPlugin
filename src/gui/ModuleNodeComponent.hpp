@@ -30,6 +30,9 @@ public:
 	void setSelected(bool selected);
 	bool isSelected() const noexcept { return isSelected_; }
 
+	void setTargetMidiModule(bool isTarget);
+	bool isTargetMidiModule() const noexcept { return isTargetMidiModule_; }
+
 	void setInputPinHighlighted(bool highlighted);
 	bool isInputPinHighlighted() const noexcept { return isInputPinHighlighted_; }
 
@@ -60,6 +63,7 @@ private:
 	juce::Point<int> dragStartComponentPos_;
 	juce::Point<float> dragStartMousePos_;
 	bool isSelected_{false};
+	bool isTargetMidiModule_{false};
 	bool isInputPinHighlighted_{false};
 	bool isDraggingCable_{false};
 

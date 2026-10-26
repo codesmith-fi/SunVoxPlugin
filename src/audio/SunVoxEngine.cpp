@@ -189,6 +189,7 @@ bool SunVoxEngine::createDefaultSynth()
 	{
 		// Module 0 is always the master Output module in SunVox
 		sv_connect_module(slot_, defaultSynthModule_, 0);
+		targetMidiModuleId_.store(defaultSynthModule_);
 		std::cout << "[SunVoxEngine] Created Generator module (" << defaultSynthModule_
 		          << ") on Slot " << slot_ << " and connected to Output (0)" << std::endl;
 	}
@@ -217,7 +218,7 @@ void SunVoxEngine::clearNonOutputModules()
 		}
 	}
 	defaultSynthModule_ = -1;
-	activeMidiModule_ = -1;
+	targetMidiModuleId_.store(-1);
 	sv_unlock_slot(slot_);
 }
 
@@ -301,26 +302,91 @@ bool SunVoxEngine::loadFromMemory(const void* data, size_t size)
 	return false;
 }
 
+std::vector<PlayableModuleInfo> SunVoxEngine::getPlayableModules()
+{
+	std::vector<PlayableModuleInfo> playables;
+	if (!isInitialized_ || slot_ < 0)
+		return playables;
+
+	sv_lock_slot(slot_);
+	int numModules = sv_get_number_of_modules(slot_);
+	for (int i = 0; i < numModules; ++i)
+	{
+		uint32_t flags = sv_get_module_flags(slot_, i);
+		if ((flags & SV_MODULE_FLAG_EXISTS) == 0)
+			continue;
+
+		const char* type = sv_get_module_type(slot_, i);
+		std::string typeStr = type ? type : "";
+		if (typeStr == "Output")
+			continue;
+
+		bool isGenerator = (flags & SV_MODULE_FLAG_GENERATOR) != 0;
+		bool isSynthOrSampler = (typeStr == "MultiSynth" || typeStr == "MetaModule" ||
+		                         typeStr == "Generator" || typeStr == "Analog Generator" ||
+		                         typeStr == "FM" || typeStr == "SpectraVoice" ||
+		                         typeStr == "Sampler" || typeStr == "DrumSynth" ||
+		                         typeStr == "Kicker" || typeStr == "VPlayer");
+
+		if (isGenerator || isSynthOrSampler)
+		{
+			const char* name = sv_get_module_name(slot_, i);
+			std::string nameStr = name ? name : ("Module " + std::to_string(i));
+			playables.push_back({ i, nameStr, typeStr });
+		}
+	}
+	sv_unlock_slot(slot_);
+
+	return playables;
+}
+
+void SunVoxEngine::autoSelectDefaultPlayableModule()
+{
+	auto playables = getPlayableModules();
+	if (playables.empty())
+	{
+		defaultSynthModule_ = -1;
+		targetMidiModuleId_.store(-1);
+		return;
+	}
+
+	// 1. If currently selected target is still valid in playables, keep it
+	int currentTarget = targetMidiModuleId_.load();
+	if (currentTarget >= 0)
+	{
+		for (const auto& p : playables)
+		{
+			if (p.id == currentTarget)
+			{
+				defaultSynthModule_ = currentTarget;
+				return;
+			}
+		}
+	}
+
+	// 2. Prioritize MultiSynth if present
+	for (const auto& p : playables)
+	{
+		if (p.type == "MultiSynth")
+		{
+			defaultSynthModule_ = p.id;
+			targetMidiModuleId_.store(p.id);
+			return;
+		}
+	}
+
+	// 3. Otherwise pick the first playable module
+	defaultSynthModule_ = playables.front().id;
+	targetMidiModuleId_.store(playables.front().id);
+}
+
 void SunVoxEngine::updateDefaultModuleAfterLoad()
 {
 	defaultSynthModule_ = -1;
 	if (slot_ < 0)
 		return;
-	int numModules = sv_get_number_of_modules(slot_);
-	for (int i = 1; i < numModules; ++i)
-	{
-		uint32_t flags = sv_get_module_flags(slot_, i);
-		if ((flags & SV_MODULE_FLAG_EXISTS) != 0)
-		{
-			const char* type = sv_get_module_type(slot_, i);
-			if (type != nullptr && std::string(type) != "Output")
-			{
-				defaultSynthModule_ = i;
-				break;
-			}
-		}
-	}
-	activeMidiModule_ = defaultSynthModule_;
+
+	autoSelectDefaultPlayableModule();
 }
 
 void SunVoxEngine::close()
@@ -386,7 +452,8 @@ void SunVoxEngine::renderAudio(float* leftOutput, float* rightOutput, int numFra
 
 void SunVoxEngine::sendMidiNote(int note, int velocity, int track)
 {
-	int targetMod = (activeMidiModule_ >= 0) ? activeMidiModule_ : defaultSynthModule_;
+	int targetMod = targetMidiModuleId_.load();
+	if (targetMod < 0) targetMod = defaultSynthModule_;
 	if (!isInitialized_ || slot_ < 0 || targetMod < 0)
 		return;
 
@@ -399,7 +466,8 @@ void SunVoxEngine::sendMidiNote(int note, int velocity, int track)
 
 void SunVoxEngine::sendMidiNoteOff(int track)
 {
-	int targetMod = (activeMidiModule_ >= 0) ? activeMidiModule_ : defaultSynthModule_;
+	int targetMod = targetMidiModuleId_.load();
+	if (targetMod < 0) targetMod = defaultSynthModule_;
 	if (!isInitialized_ || slot_ < 0 || targetMod < 0)
 		return;
 
@@ -429,7 +497,8 @@ void SunVoxEngine::sendAllNotesOff()
 
 void SunVoxEngine::sendPitchBend(int track, int pitchVal)
 {
-	int targetMod = (activeMidiModule_ >= 0) ? activeMidiModule_ : defaultSynthModule_;
+	int targetMod = targetMidiModuleId_.load();
+	if (targetMod < 0) targetMod = defaultSynthModule_;
 	if (!isInitialized_ || slot_ < 0 || targetMod < 0)
 		return;
 

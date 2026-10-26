@@ -25,6 +25,9 @@ public:
 	void selectModule(int modId);
 	int getSelectedModuleId() const noexcept { return selectedModuleId_; }
 
+	void setTargetMidiModuleId(int id);
+	int getTargetMidiModuleId() const noexcept { return targetMidiModuleId_; }
+
 	juce::Point<float> screenToWorld(juce::Point<float> screenPos) const noexcept;
 	juce::Point<float> worldToScreen(juce::Point<float> worldPos) const noexcept;
 	juce::AffineTransform getCanvasTransform() const noexcept;
@@ -59,6 +62,7 @@ private:
 
 	SunVoxEngine* engine_{nullptr};
 	int selectedModuleId_{-1};
+	int targetMidiModuleId_{-1};
 	std::unique_ptr<CanvasContentHolder> contentHolder_;
 	std::vector<std::unique_ptr<ModuleNodeComponent>> nodes_;
 	std::unordered_map<int, ModuleNodeComponent*> nodeMap_;

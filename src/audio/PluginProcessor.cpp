@@ -103,7 +103,7 @@ double SunVoxAudioProcessor::getTailLengthSeconds() const
 }
 
 static constexpr uint32_t kPluginStateMagic = 0x5356504c; // "SVPL" in ASCII
-static constexpr uint32_t kPluginStateVersion = 1;
+static constexpr uint32_t kPluginStateVersion = 2;
 
 void SunVoxAudioProcessor::getStateInformation(juce::MemoryBlock& destData)
 {
@@ -117,6 +117,7 @@ void SunVoxAudioProcessor::getStateInformation(juce::MemoryBlock& destData)
 	stream.writeInt(static_cast<int>(kPluginStateVersion));
 	stream.writeInt(static_cast<int>(sunvoxBytes.size()));
 	stream.write(sunvoxBytes.data(), sunvoxBytes.size());
+	stream.writeInt(sunVoxEngine_.getActiveMidiModule());
 }
 
 void SunVoxAudioProcessor::setStateInformation(const void* data, int sizeInBytes)
@@ -129,7 +130,7 @@ void SunVoxAudioProcessor::setStateInformation(const void* data, int sizeInBytes
 	uint32_t version = static_cast<uint32_t>(stream.readInt());
 	int dataSize = stream.readInt();
 
-	if (magic != kPluginStateMagic || version != kPluginStateVersion || dataSize <= 0)
+	if (magic != kPluginStateMagic || (version != 1 && version != 2) || dataSize <= 0)
 		return;
 
 	if (stream.getNumBytesRemaining() < dataSize)
@@ -139,6 +140,12 @@ void SunVoxAudioProcessor::setStateInformation(const void* data, int sizeInBytes
 	if (stream.read(buffer.data(), static_cast<size_t>(dataSize)) == dataSize)
 	{
 		sunVoxEngine_.loadFromMemory(buffer.data(), buffer.size());
+
+		if (version >= 2 && stream.getNumBytesRemaining() >= 4)
+		{
+			int targetMod = stream.readInt();
+			sunVoxEngine_.setActiveMidiModule(targetMod);
+		}
 
 		if (onStateChanged)
 			onStateChanged();

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <atomic>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -59,6 +60,13 @@ struct ModuleInfo
 	int x{0};
 	int y{0};
 	std::vector<int> outputConnections;
+};
+
+struct PlayableModuleInfo
+{
+	int id{-1};
+	std::string name;
+	std::string type;
 };
 
 struct ControllerInfo
@@ -122,8 +130,11 @@ public:
 	std::vector<ControllerInfo> getModuleControllers(int modId);
 	void setModuleCtlValue(int modId, int ctlId, int value);
 
-	void setActiveMidiModule(int modId) noexcept { activeMidiModule_ = modId; }
-	int getActiveMidiModule() const noexcept { return activeMidiModule_; }
+	std::vector<PlayableModuleInfo> getPlayableModules();
+	void autoSelectDefaultPlayableModule();
+
+	void setActiveMidiModule(int modId) noexcept { targetMidiModuleId_.store(modId); }
+	int getActiveMidiModule() const noexcept { return targetMidiModuleId_.load(); }
 
 private:
 	bool isLibraryLoaded_{false};
@@ -131,7 +142,7 @@ private:
 	int sampleRate_{44100};
 	int slot_{-1};
 	int defaultSynthModule_{-1};
-	int activeMidiModule_{-1};
+	std::atomic<int> targetMidiModuleId_{-1};
 	std::vector<float> interleavedBuffer_;
 	mutable std::recursive_mutex engineMutex_;
 

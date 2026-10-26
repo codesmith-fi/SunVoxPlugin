@@ -84,10 +84,16 @@ void GraphCanvas::updateFromEngine(const std::vector<ModuleInfo>& modules)
 	int autoXOutput = 560;
 	int autoYOutput = 220;
 
+	if (engine_ != nullptr)
+	{
+		targetMidiModuleId_ = engine_->getActiveMidiModule();
+	}
+
 	for (const auto& info : modules)
 	{
 		auto node = std::make_unique<ModuleNodeComponent>(info);
 		node->setSelected(info.id == selectedModuleId_);
+		node->setTargetMidiModule(info.id == targetMidiModuleId_);
 		node->onSelected = [this](int modId) {
 			selectModule(modId);
 		};
@@ -152,6 +158,15 @@ void GraphCanvas::updateFromEngine(const std::vector<ModuleInfo>& modules)
 	}
 
 	repaint();
+}
+
+void GraphCanvas::setTargetMidiModuleId(int id)
+{
+	targetMidiModuleId_ = id;
+	for (auto& node : nodes_)
+	{
+		node->setTargetMidiModule(node->getModuleId() == id);
+	}
 }
 
 void GraphCanvas::selectModule(int modId)

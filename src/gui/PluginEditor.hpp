@@ -55,6 +55,9 @@ private:
 	bool isBrowserOpen_{false};
 	std::unique_ptr<juce::FileChooser> fileChooser_;
 
+	// Target playable module selector
+	juce::ComboBox targetModuleSelector_{"MIDI Target"};
+
 	// Drag & Drop state
 	bool isDraggingFile_{false};
 	bool isDragValid_{false};
@@ -63,6 +66,7 @@ private:
 	void handleLoadClicked();
 	void handleSaveClicked();
 	void updatePresetDisplay();
+	void updateTargetModuleSelector();
 
 	JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(SunVoxAudioProcessorEditor)
 };

@@ -36,6 +36,15 @@ void ModuleNodeComponent::setSelected(bool selected)
 	}
 }
 
+void ModuleNodeComponent::setTargetMidiModule(bool target)
+{
+	if (isTargetMidiModule_ != target)
+	{
+		isTargetMidiModule_ = target;
+		repaint();
+	}
+}
+
 void ModuleNodeComponent::setInputPinHighlighted(bool highlighted)
 {
 	if (isInputPinHighlighted_ != highlighted)
@@ -79,7 +88,23 @@ void ModuleNodeComponent::paint(juce::Graphics& g)
 	g.fillRect(headerArea.getX(), headerArea.getY() + 4.0f, headerArea.getWidth(), cornerSize * 2.0f);
 
 	// Outer border
-	if (isSelected_)
+	if (isTargetMidiModule_ && isSelected_)
+	{
+		// Both target MIDI and selected: double bright glow
+		g.setColour(juce::Colour(0x6600e5ff));
+		g.drawRoundedRectangle(getLocalBounds().toFloat().reduced(1.5f), cornerSize, 3.0f);
+		g.setColour(juce::Colour(0xff00ffcc));
+		g.drawRoundedRectangle(getLocalBounds().toFloat().reduced(0.5f), cornerSize, 2.0f);
+	}
+	else if (isTargetMidiModule_)
+	{
+		// Target MIDI module border
+		g.setColour(juce::Colour(0x5500e5ff));
+		g.drawRoundedRectangle(getLocalBounds().toFloat().reduced(1.0f), cornerSize, 2.0f);
+		g.setColour(juce::Colour(0xff00e5ff));
+		g.drawRoundedRectangle(getLocalBounds().toFloat().reduced(0.5f), cornerSize, 1.5f);
+	}
+	else if (isSelected_)
 	{
 		// Glow effect
 		g.setColour(juce::Colour(0x5500e5ff));
@@ -103,6 +128,17 @@ void ModuleNodeComponent::paint(juce::Graphics& g)
 	g.setFont(juce::FontOptions(11.0f));
 	juce::String typeText = juce::String(info_.type) + " [#" + juce::String(info_.id) + "]";
 	g.drawText(typeText, 14, 34, getWidth() - 28, 16, juce::Justification::centredLeft, true);
+
+	// MIDI Target Badge
+	if (isTargetMidiModule_)
+	{
+		auto badgeRect = juce::Rectangle<float>(static_cast<float>(getWidth() - 48), static_cast<float>(getHeight() - 20), 38.0f, 13.0f);
+		g.setColour(juce::Colour(0xff00e5ff));
+		g.fillRoundedRectangle(badgeRect, 3.0f);
+		g.setColour(juce::Colour(0xff14171d));
+		g.setFont(juce::FontOptions(9.0f, juce::Font::bold));
+		g.drawText("MIDI", badgeRect, juce::Justification::centred, false);
+	}
 
 	// Input Pin (Left)
 	const float centerY = static_cast<float>(getHeight()) * 0.5f;
